@@ -1,10 +1,15 @@
 
+//#define PY_SSIZE_T_CLEAN
+//#include <Python.h>
+//#include <structmember.h>
+//#include <numpy/arrayobject.h>
+
 #include <math.h>
 #include <stdio.h>
 #include <complex.h>
 #include <string.h>
 #include "common.h"
-#include "deflect_backend.h"
+#include "deflect.h"
 
 void deflect_SIE(parametric_lens lens, double x, double y, double *dx);
 void deflect_PEMD_series(parametric_lens lens, double x, double y, double *dx, int want_deriv, double *deriv);

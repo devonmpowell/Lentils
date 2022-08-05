@@ -22,13 +22,13 @@ except VersionConflict:
 
 if __name__ == "__main__":
 
-    deflect = Extension('models.deflect_backend', sources = ['lentils/models/deflect_backend.c'], include_dirs = ['lentils/common', 'lentils/models'])
-    triangles = Extension('operators.triangles_backend', sources = ['lentils/operators/triangles_backend.c'], include_dirs = ['lentils/common', 'lentils/operators'])
-    raster = Extension('operators.raster_backend', sources = ['lentils/operators/raster_backend.c'], include_dirs = ['lentils/common', 'lentils/operators'])
-    nufft = Extension('operators.nufft_backend', sources = ['lentils/operators/nufft_backend.c'],
+    deflect = Extension('backend.deflect', sources = ['lentils/backend/deflect.c'], include_dirs = ['lentils/backend'])
+    triangles = Extension('backend.triangles', sources = ['lentils/backend/triangles.c'], include_dirs = ['lentils/backend'])
+    raster = Extension('backend.raster', sources = ['lentils/backend/raster.c'], include_dirs = ['lentils/backend'])
+    nufft = Extension('backend.nufft', sources = ['lentils/backend/nufft.c'],
             libraries=['gsl', 'gslcblas', 'm', 'gomp', 'fftw3', 'fftw3_omp','fftw3_threads'],
             runtime_library_dirs=['/usr/lib/x86_64-linux-gnu'],
-            include_dirs=['/usr/include', 'lentils/common', 'lentils/operators'],
+            include_dirs=['/usr/include', 'lentils/backend'],
             library_dirs=['/usr/lib/x86_64-linux-gnu'],extra_compile_args=['-fopenmp'])
 
 

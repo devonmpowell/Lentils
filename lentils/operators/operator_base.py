@@ -8,67 +8,15 @@ Note: This skeleton file can be safely removed if not needed!
 import numpy as np
 from astropy.convolution import convolve, convolve_fft
 from scipy import sparse
-from ctypes import c_int, c_double, c_char, POINTER, Structure, cdll
 from copy import copy
-import ctypes as cc
-import glob
-import os
 import matplotlib.pyplot as plt
 from astropy.io import fits
+
+
 from lentils.common import Space, VisibilitySpace, FourierSpace, ImageSpace, DelaunaySpace 
 from lentils.models import LensModel
+from lentils.backend import libtriangles, libnufft, c_nufft, libraster
 
-# ctype basics
-c_int_p = np.ctypeslib.ndpointer(dtype=np.int32, flags='C_CONTIGUOUS')
-c_double_p = np.ctypeslib.ndpointer(dtype=np.float64, flags='C_CONTIGUOUS')
-c_complex_p = np.ctypeslib.ndpointer(dtype=np.complex128, flags='C_CONTIGUOUS')
-c_bool_p = np.ctypeslib.ndpointer(dtype=np.bool, flags='C_CONTIGUOUS')
-
-modulepath = os.path.dirname(os.path.realpath(__file__))
-
-# triangle geometry c library
-libtriangles = np.ctypeslib.load_library('triangles_backend', modulepath)
-libtriangles.triangle_gradient_csr.restype = None
-libtriangles.triangle_gradient_csr.argtypes = [c_int, c_int_p, c_double_p, c_int_p, c_int_p, c_double_p]
-libtriangles.delaunay_lens_matrix_csr.restype = None
-libtriangles.delaunay_lens_matrix_csr.argtypes = [c_int, c_int, c_int, c_bool_p, 
-        c_double_p, c_int_p, c_double_p, c_int_p, c_int_p, c_int_p, c_double_p]
-
-
-# nufft library
-class _c_nufft(Structure):
-    _fields_ = [('nx_im', c_int), ('ny_im', c_int),
-            ('padx', c_int), ('pady', c_int),
-            ('nx_pad', c_int), ('ny_pad', c_int),
-            ('half_ny_pad', c_int), ('pad_factor', c_double),
-            ('dx', c_double), ('dy', c_double),
-            ('cx', c_double), ('cy', c_double),
-            ('du', c_double), ('dv', c_double),
-            ('nchannels', c_int),('nstokes', c_int),('nrows', c_int),
-            ('uv', c_double_p), ('channels', c_double_p),
-            ('wsup', c_double), ('kb_beta', c_double),]
-
-libnufft = np.ctypeslib.load_library('nufft_backend', modulepath)
-libnufft.init_nufft.restype = None
-libnufft.init_nufft.argtypes = [POINTER(_c_nufft),
-        c_int, c_int, c_double, c_double, c_double, c_double,
-        c_double, c_int, c_int, c_int, c_int, c_double_p, c_double_p]
-libnufft.evaluate_apodization_correction.restype = None
-libnufft.evaluate_apodization_correction.argtypes = [POINTER(_c_nufft), c_double_p]
-libnufft.zero_pad.restype = None
-libnufft.zero_pad.argtypes = [POINTER(_c_nufft), c_double_p, c_double_p, c_int]
-libnufft.fft2d.restype = None
-libnufft.fft2d.argtypes = [POINTER(_c_nufft), c_double_p, c_complex_p, c_int]
-libnufft.grid_cpu.restype = None
-libnufft.grid_cpu.argtypes = [POINTER(_c_nufft), c_complex_p, c_complex_p, c_int]
-libnufft.convolution_matrix_csr.restype = None
-libnufft.convolution_matrix_csr.argtypes = [c_int, c_int, c_int, c_int, 
-        c_double_p, c_int_p, c_int_p, c_double_p]
-
-
-libraster = np.ctypeslib.load_library('raster_backend', modulepath)
-libraster.rasterize_triangle.restype = None
-libraster.rasterize_triangle.argtypes = [c_double_p, c_double_p, c_int, c_int, c_double, c_double, c_double, c_double, c_double_p]
 
 
 def broadcastable(a, b):
@@ -429,7 +377,7 @@ class NUFFTOperator(CompositeOperatorProduct):
             raise TypeError("vis_space must be of type VisibilitySpace")
 
         # initializ the c backend
-        self._cpars = _c_nufft()
+        self._cpars = c_nufft()
         image_shape = image_space.shape
         image_bounds = image_space._bounds
         libnufft.init_nufft(

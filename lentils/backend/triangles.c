@@ -1,7 +1,7 @@
 #include <math.h>
 #include <stdio.h>
 #include "common.h"
-#include "triangles_backend.h"
+#include "triangles.h"
 
 /*------Define the function that check whether a point is inside or outside a triangle of the source grid----------------*/
 void triangle_geometry(double *s, double *tri, double *weights_out, double *area)

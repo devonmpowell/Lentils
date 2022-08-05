@@ -5,7 +5,7 @@
 #include <fftw3.h>
 #include <omp.h>
 #include "common.h"
-#include "nufft_backend.h"
+#include "nufft.h"
 
 
 double kb_g(double argk, double argq, double beta, double wsup) {

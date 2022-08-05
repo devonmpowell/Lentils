@@ -14,24 +14,9 @@ import os
 import astropy.cosmology as cosmo
 _cosmology = cosmo.Planck15
 
-# TODO: make a dedicated sub-module for loading the C backend
-c_int_p = np.ctypeslib.ndpointer(dtype=np.int32, flags='C_CONTIGUOUS')
-c_double_p = np.ctypeslib.ndpointer(dtype=np.float64, flags='C_CONTIGUOUS')
-c_null_dummy = np.zeros(0)
+# TODO: make Lensmodel *inherit* _c_lensmodel?
+from lentils.backend import libdeflect, c_lensmodel, c_null_p
 
-class _c_lensmodel(Structure):
-    _fields_ = [('b', c_double), ('th', c_double), ('f', c_double), 
-           ('x', c_double), ('y', c_double), ('rc', c_double), 
-           ('qh', c_double), ('ss', c_double), ('sa', c_double), 
-           ('z', c_double), ('d_l', c_double), ('d_s', c_double), 
-           ('d_ls', c_double), ('sigma_c', c_double),
-           ('sin_th', c_double), ('cos_th', c_double), ('sin_sa', c_double), ('cos_sa', c_double),]
-
-modulepath = os.path.dirname(os.path.realpath(__file__))
-libname = glob.glob('{}/deflect*.so'.format(modulepath))[0]
-libdeflect = cdll.LoadLibrary(libname)
-libdeflect.deflect_points.restype = None
-libdeflect.deflect_points.argtypes = [_c_lensmodel, c_double_p,c_int,c_double_p,c_int,c_double_p]
 
 
 # TODO: this needs to be split into more general classes
@@ -44,7 +29,7 @@ class LensModel:
 
         self.name = name
         self.description = description
-        self._c_lensmodel = _c_lensmodel()
+        self._c_lensmodel = c_lensmodel()
         self._c_lensmodel.b  = b; 
         self._c_lensmodel.th = th;
         self._c_lensmodel.f  = f;
@@ -83,7 +68,7 @@ class LensModel:
             libdeflect.deflect_points(self._c_lensmodel, points, npoints, deflected, 1, gradients)
             return deflected, gradients
 
-        libdeflect.deflect_points(self._c_lensmodel, points, npoints, deflected, 0, c_null_dummy);
+        libdeflect.deflect_points(self._c_lensmodel, points, npoints, deflected, 0, c_null_p);
         return deflected
 
 
