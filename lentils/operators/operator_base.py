@@ -47,13 +47,6 @@ def broadcast(func):
 
     return broadcast_func
 
-# Next TODO:
-# - Concatenating explicit matrices
-# - Re-organize c library loading into its own sub-module
-# - Re-organize operator sub-modules
-# - Broadcasting to full data shape, including channels and stokes
-# - Get rid of space names...
-
 
 class Operator:
 
