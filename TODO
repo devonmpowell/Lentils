@@ -1,17 +1,27 @@
 
+- All TODOs in code
+
+- Clean up unit tests, split into more manageable files
+
+- Split out operator_base into specific files
+
+- Concatenating explicit matrices
+
+- Re-organize sub-modules ('spaces', 'util'?)
+
+- Make cosmology a global property?
+
+- Broadcasting to full data shape, including channels and stokes
+
+- Get rid of space names...
+
 - Use 2F1 series for all deflection computations
 
 - Regularization operators
 
-- Fix up adjoint operators (L and B)
-
 - Rotating visibilities to center of image plane
 
 - How is the visibility mask done?
-
-- Broadcasting functions
-
-- Syntax for nested operator evaluations
 
 - Solver framework
 
@@ -19,6 +29,3 @@
 
 - Make the covariance weight application slicker?
 
-- 
-
-- All TODOs in code
