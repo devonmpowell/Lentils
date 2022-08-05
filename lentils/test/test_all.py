@@ -23,6 +23,12 @@ errtol = 1.0e-6
 
 imargs = {'origin': 'lower', 'interpolation': 'nearest', 'cmap': plt.cm.Spectral}
 
+from os.path import dirname, realpath
+
+# path to this test directory
+testpath = dirname(realpath(__file__))
+
+
 class LensTests(TestCase):
 
 
@@ -31,9 +37,9 @@ class LensTests(TestCase):
         return
 
         # load image data just for mask and noise
-        testdir = 'tests/optical_2d_quick/input'
-        imdata = Dataset.image_from_fits('{}/data.fits'.format(testdir), 
-                noise=0.0304896, maskfits='{}/mask.fits'.format(testdir), bounds=[(-0.72,0.72),(-0.67,0.67)])
+        imdata = Dataset.image_from_fits(f'{testpath}/data_optical_2d/data.fits',
+                noise=0.0304896, maskfits=f'{testpath}/data_optical_2d/mask.fits', 
+                bounds=[(-0.72,0.72),(-0.67,0.67)])
         image_space = imdata.space 
         print("data max =", np.max(imdata.data))
         print("data shape =", imdata.data.shape)
@@ -174,7 +180,7 @@ class NUFFTTests(TestCase):
     def test_dirty_beam(self):
 
         # test the dirty beam of a mock dataset against the DFT computation, and a reference file
-        uvdata = Dataset.visibilities_from_uvfits('tests/radio_2d_fft_quick/input/j0751_small_snr1x.uvfits')
+        uvdata = Dataset.visibilities_from_uvfits(f'{testpath}/data_radio_2d/input/j0751_small_snr1x.uvfits')
         image_space = ImageSpace(shape=(64,64), bounds=[(-.035, .035), (-.035,.035)])
         nufft = NUFFTOperator(uvdata.space, image_space)
         vdata = np.ones(uvdata.space.shape, dtype=np.complex128)
@@ -201,7 +207,7 @@ class NUFFTTests(TestCase):
 
     def test_dirty_image(self):
 
-        uvdata = Dataset.visibilities_from_uvfits('tests/radio_2d_fft_quick/input/j0751_small_snr1x.uvfits')
+        uvdata = Dataset.visibilities_from_uvfits(f'{testpath}/data_radio_2d/input/j0751_small_snr1x.uvfits')
         image_space = ImageSpace(shape=(2048,2048), bounds=[(-1.0, 0.2,), (-0.5, 0.7)])
         nufft = NUFFTOperator(uvdata.space, image_space)
         cvec = uvdata.covariance_operator.T * uvdata.data[0,0,:] # TODO: take care of broadcastability 
@@ -220,9 +226,8 @@ class SolverTests(TestCase):
         #return True
 
         # load image data just for mask and noise
-        testdir = 'tests/optical_2d_quick/input'
-        imdata = Dataset.image_from_fits(f'{testdir}/data.fits', 
-                noise=0.0304896, maskfits=f'{testdir}/mask.fits', 
+        imdata = Dataset.image_from_fits(f'{testpath}/data_optical_2d/input/data.fits',
+                noise=0.0304896, maskfits=f'{testpath}/data_optical_2d/input/mask.fits', 
                 bounds=[(-0.72,0.72),(-0.67,0.67)])
         image_space = imdata.space 
         covop = imdata.covariance_operator
@@ -256,7 +261,7 @@ class SolverTests(TestCase):
         #plt.show()
 
 
-        psfop = ConvolutionOperator(image_space, fitsfile=f'{testdir}/psf.fits', kernelsize=21, fft=False)
+        psfop = ConvolutionOperator(image_space, fitsfile=f'{testpath}/data_optical_2d/input/psf.fits', kernelsize=21, fft=False)
         blurred = psfop * lensed
         mockdata = blurred + np.random.normal(scale=imdata.sigma) 
         #plt.imshow(mockdata.T, extent=image_space._bounds.flatten(), **imargs)
