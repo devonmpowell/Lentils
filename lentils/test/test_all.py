@@ -9,6 +9,7 @@ from lentils.operators import *
 from lentils.models import * 
 
 from astropy.table import Table
+import astropy.io.fits as fits 
 import matplotlib.pyplot as plt
 
 import scipy.sparse as sparse
@@ -179,44 +180,63 @@ class NUFFTTests(TestCase):
 
     def test_dirty_beam(self):
 
+        # set up proper pixel sizes relative to reference fits file
+        nx = 64
+        hnx = nx//2
+        cx = 1024
+        dx = 1.5/cx
+        extent = dx*hnx
+
         # test the dirty beam of a mock dataset against the DFT computation, and a reference file
         uvdata = Dataset.visibilities_from_uvfits(f'{testpath}/data_radio_2d/input/j0751_small_snr1x.uvfits')
-        image_space = ImageSpace(shape=(64,64), bounds=[(-.035, .035), (-.035,.035)])
+        image_space = ImageSpace(shape=(nx,nx), bounds=[(-extent, extent), (-extent,extent)])
         nufft = NUFFTOperator(uvdata.space, image_space)
         vdata = np.ones(uvdata.space.shape, dtype=np.complex128)
         cvec = uvdata.covariance_operator.T * vdata
-        wtsum = np.sum(cvec)
+        wtsum = np.sum(np.abs(cvec))
         apvec = nufft.T * cvec
         self.assertAlmostEqual(1.0, np.max(apvec)/wtsum, delta=errtol) 
 
+        # check against DFT computation
         dft = DFTOperator(uvdata.space, image_space)
         dftvec = dft.T * cvec
         dftvec = np.real(dftvec) # TODO: make real/complex types smarter
         resid_max = np.max(np.abs(dftvec-apvec))/np.max(np.abs(dftvec))
         self.assertLess(resid_max, errtol) 
 
-        # TODO: check against reference beam, but need proper pixel sizes and ranges
-        #with fits.open('tests/radio_2d_fft_quick/input/dirty_beam_test.fits') as f:
-            #reference = f['PRIMARY'].data.T[:,:,0]
-        #print("reference shape=", reference.shape)
-        #print('reference min,max =', np.min(reference), np.max(reference))
-        #plt.imshow(reference.T, extent=[-1.5,1.5,-1.5,1.5], **imargs)
-        #plt.show()
-
+        # check against reference data
+        with fits.open(f'{testpath}/data_radio_2d/reference/dirty_beam_reference_fft.fits') as f:
+            reference = f['PRIMARY'].data.T[cx-hnx:cx+hnx,cx-hnx:cx+hnx,0]
+        resid = (reference-apvec)/wtsum
+        resid_max = np.max(np.abs(resid))
+        self.assertLess(resid_max, errtol) 
 
 
     def test_dirty_image(self):
 
         uvdata = Dataset.visibilities_from_uvfits(f'{testpath}/data_radio_2d/input/j0751_small_snr1x.uvfits')
-        image_space = ImageSpace(shape=(2048,2048), bounds=[(-1.0, 0.2,), (-0.5, 0.7)])
+        image_space = ImageSpace(shape=(1024,1024), bounds=[(-1.15, 0.35,), (-0.65, 0.85)])
         nufft = NUFFTOperator(uvdata.space, image_space)
         cvec = uvdata.covariance_operator.T * uvdata.data[0,0,:] # TODO: take care of broadcastability 
         apvec = nufft.T * cvec
 
-        # TODO: compare with a reference dataset here!
-        plt.imshow(apvec.T, extent=image_space._bounds.flatten(), **imargs)
-        plt.show()
+        # compare to a reference FFT dataset 
+        with fits.open(f'{testpath}/data_radio_2d/reference/dirty_image_reference_fft.fits') as f:
+            reference = f['PRIMARY'].data.T[:,:,0]
+        refmax = np.max(np.abs(reference))
+        resid = (reference-apvec)/refmax
+        resid_max = np.max(np.abs(resid))
+        self.assertLess(resid_max, errtol) 
 
+        # compare to reference DFT data set
+        with fits.open(f'{testpath}/data_radio_2d/reference/dirty_image_reference_dft.fits') as f:
+            reference = f['PRIMARY'].data.T[:,:,0]
+        with fits.open(f'{testpath}/data_radio_2d/input/mask_1024_zoom.fits') as f:
+            mask = f['PRIMARY'].data.T.astype(bool)
+        refmax = np.max(np.abs(reference))
+        resid = (reference-apvec)/refmax
+        resid_max = np.max(np.abs(resid*mask))
+        self.assertLess(resid_max, errtol) 
 
 
 class SolverTests(TestCase):
