@@ -9,9 +9,9 @@ import numpy as np
 import astropy.io.fits as fits 
 import astropy.constants as const
 from scipy.spatial import Delaunay
-import matplotlib.pyplot as plt
-from lentils.operators import DiagonalOperator
+from lentils.operators import DiagonalOperator, ConvolutionOperator, NUFFTOperator
 from lentils.common import ImageSpace, VisibilitySpace 
+from .data_util import _load_uvfits
 
 class Dataset:
 
@@ -21,109 +21,103 @@ class Dataset:
         self.data = data.astype(dtype)
         self.sigma = sigma.astype(np.float64) # we treat sigma as always real
         self.mask = mask.astype(np.bool_) 
+        self.dtype = dtype
 
     def __repr__(self):
         return '{} with space {}'.format(self.name, self.space) 
 
     @property
+    def blurring_operator(self):
+        raise NotImplementedError
+
+    @property
+    def blurred_covariance_operator(self):
+        raise NotImplementedError
+
+    @property
     def covariance_operator(self):
-        diag = np.zeros_like(self.sigma)
-        diag[self.mask] = self.sigma[self.mask]**-2 
-        return DiagonalOperator(self.space, diag)
+        try:
+            return self._covariance_op
+        except AttributeError:
+            diag = np.zeros_like(self.sigma)
+            diag[self.mask] = self.sigma[self.mask]**-2 
+            self._covariance_op = DiagonalOperator(self.space, diag)
+            return self._covariance_op
 
-    @staticmethod
-    def visibilities_from_uvfits(fitsfile, combine_stokes=True, mfs=True):
+    @property
+    def size(self):
+        return np.product(self._shape)
 
-        # open the fits file 
-        allhdu = fits.open(fitsfile, memmap=True)
-        hdu = allhdu['PRIMARY']
-        data = hdu.data
-        header = hdu.header
+    @property
+    def shape(self):
+        return self._shape[-2:]
 
-        # get the header into a dict that we can access via the axis name
-        axes = {}
-        for ax in range(1,header['NAXIS']+1):
-            nax = header['NAXIS%d'%ax]
-            if nax == 0:
-                continue
-            axtmp = {'NAXIS': nax,}
-            for label in ['CRVAL','CDELT','CRPIX','CROTA']:
-                axtmp[label] = header['%s%d'%(label,ax)]
-            axes[header['CTYPE%d'%ax]] = axtmp
-        #for key in header:
-            #print(key,':',header[key])
-        #for key in axes:
-            #print(key,':',axes[key])
-
-        # shape the data
-        num_rows = header['GCOUNT']
-        num_spw = axes['IF']['NAXIS']
-        num_channels = axes['FREQ']['NAXIS']
-        num_stokes = axes['STOKES']['NAXIS']
-        ref_freq = axes['FREQ']['CRVAL']
-        ref_ch = axes['FREQ']['CRPIX']-1 # convert from 1-based indexing
-
-        # get frequency data
-        # TODO: check them against the C code
-        fqhead = allhdu['AIPS FQ'].header
-        fqdata = allhdu['AIPS FQ'].data
-        #print(fqdata['IF FREQ'])
-        #print(fqdata['CH WIDTH'])
-        channels = (np.multiply.outer(fqdata['CH WIDTH'].reshape((num_spw)), (np.arange(num_channels)-ref_ch)) \
-                + fqdata['IF FREQ'].reshape((num_spw,1)) + ref_freq).flatten()
-        num_channels = num_channels*num_spw 
-        assert channels.size == num_channels
-
-        # read in data
-        # TODO: original data is only 32-bit...
-        uvcoords = np.array([data['UU'],data['VV'],data['WW']]).T.astype(np.float64, order='C')
-        rawvisdata = data['DATA'][:,0,0,:,:,:,0] + 1j*data['DATA'][:,0,0,:,:,:,1]
-        rawweights = data['DATA'][:,0,0,:,:,:,2]
-        rawmask = (rawweights > 0.0) 
-        rawsigma = np.zeros_like(rawweights)
-        rawsigma[rawmask] = rawweights[rawmask]**-0.5
-
-        # combine stokes parameters if desired
-        # TODO: add a check of the stokes parameter names
-        #combine_stokes=False
-        combine_stokes=True
-        if combine_stokes:
-
-            rawmask = np.all(rawmask,axis=-1)
-            #print('rawmask shape =', rawmask.shape)
-             
-            # TODO: check this math 
-            rr = rawvisdata[:,:,:,0] 
-            ll = rawvisdata[:,:,:,1] 
-            rawvisdata = 0.5*(rr+ll)
-            #print('rawvisdata shape =', rawvisdata.shape)
-            srr = rawsigma[:,:,:,0] 
-            sll = rawsigma[:,:,:,1] 
-            rawsigma = np.zeros_like(srr)
-            rawsigma[rawmask] = 0.5*np.sqrt(srr[rawmask]**2+sll[rawmask]**2)
-            #print('rawsigma shape =', rawsigma.shape)
-            num_stokes = 1
-        else:
-            rawvisdata = rawvisdata[:,:,:,0] 
-            rawsigma = rawsigma[:,:,:,0] 
-            rawmask = rawmask[:,:,:,0] 
-
-        # shape and store
-        uvspace = VisibilitySpace(name="VisibilitySpace from file {}".format(fitsfile), channels=channels, uvcoords=uvcoords)
-        reordered_data = np.moveaxis(rawvisdata.reshape((uvspace.num_rows, uvspace.num_channels, uvspace.num_stokes)), [0,1,2], [2,0,1]).astype(np.complex128, order='C')
-        reordered_sigma = np.moveaxis(rawsigma.reshape((uvspace.num_rows, uvspace.num_channels, uvspace.num_stokes)), [0,1,2], [2,0,1]).astype(np.float64, order='C')
-        reordered_mask = np.moveaxis(rawmask.reshape((uvspace.num_rows, uvspace.num_channels, uvspace.num_stokes)), [0,1,2], [2,0,1]).astype(np.bool_, order='C')
-        dataset = Dataset(name='Dataset from file {}'.format(fitsfile), \
-                data=reordered_data, sigma=reordered_sigma, mask=reordered_mask, space=uvspace, dtype=np.complex128)
-
-        allhdu.close()
-        return dataset 
+    @property
+    def num_channels(self):
+        return self._shape[0]
 
 
-    @staticmethod
-    def image_from_fits(datafits, maskfits=None, noise=None, bounds=[(-1.0,1.0),(-1.0,1.0)], dtype=np.float64):
 
-        # TODO: make the fits reader smarter
+
+
+
+
+
+
+class RadioDataset(Dataset):
+
+    def __init__(self, file, image_space=None, combine_stokes=True, mfs=True):
+
+        uvspace, data, sigma, mask = _load_uvfits(file, combine_stokes)
+
+        super().__init__(name='Dataset from file {}'.format(file), \
+                data=data, sigma=sigma, mask=mask, space=uvspace, dtype=np.complex128)
+
+        if image_space is not None:
+            if not isinstance(image_space, ImageSpace):
+                raise TypeError("image_space must be of type ImageSpace for now.")
+            self.image_space = image_space
+            self.nufft_operator = NUFFTOperator(self.space, self.image_space)
+
+
+    @property
+    def blurring_operator(self):
+        return self.nufft_operator
+
+    @property
+    def blurred_covariance_operator(self):
+        # TODO: make this smarter, to save one object
+        return None
+
+    @property
+    def dirty_image(self):
+        try:
+            return self._dirty_image
+        except AttributeError:
+            self._dirty_image = self.nufft_operator.T * self.covariance_operator * self.data
+            return self._dirty_image
+
+    @property
+    def dirty_beam(self):
+        try:
+            return self._dirty_beam
+        except AttributeError:
+            nx = 2*self.image_space._shape[0]
+            ny = 2*self.image_space._shape[1]
+            rx = self.image_space._dx[0]*self.image_space._shape[0]
+            ry = self.image_space._dx[1]*self.image_space._shape[1]
+            self._space_beam = ImageSpace(shape=(nx,ny), bounds=[(-rx,rx), (-ry,ry)])
+            self._nufft_beam = NUFFTOperator(self.space, self._space_beam)
+            ones = self.space.new_vector(1.0) 
+            self._dirty_beam = self._nufft_beam.T * self.covariance_operator * ones
+            return self._dirty_beam
+
+
+
+class OpticalDataset(Dataset):
+
+    def __init__(self, datafits, maskfits=None, noise=None, psf=None, psf_support=None, bounds=[(-1.0,1.0),(-1.0,1.0)], dtype=np.float64):
+
         # get the raw data
         # assumes order (channel,y,x), so we take the transpose
         with fits.open(datafits) as f:
@@ -147,30 +141,21 @@ class Dataset:
 
         # create a space and a vector
         space = ImageSpace(shape=data.shape, bounds=bounds)
-        dataset = Dataset(name='Dataset from file {}'.format(datafits), \
+        super().__init__(name='Dataset from file {}'.format(datafits), \
                 data=data, sigma=sigma, mask=mask, space=space)
-        return dataset
+
+        # load the psf operator
+        if psf is not None:
+            self.psf_operator = ConvolutionOperator(space, fitsfile=psf, kernelsize=psf_support, fft=False)
+            self.bcb_operator = self.psf_operator.T * self.covariance_operator * self.psf_operator 
 
 
     @property
-    def points(self):
-        centers = self._dx*(0.5+np.mgrid[0:self.shape[1],0:self.shape[0]].T).astype(np.float64)
-        centers[...,0] += self._bounds[-2][0]
-        centers[...,1] += self._bounds[-1][0]
-        return centers 
-
+    def blurring_operator(self):
+        return self.psf_operator
 
     @property
-    def size(self):
-        return np.product(self._shape)
-
-    @property
-    def shape(self):
-        return self._shape[-2:]
-
-
-    @property
-    def num_channels(self):
-        return self._shape[0]
+    def blurred_covariance_operator(self):
+        return self.bcb_operator 
 
 

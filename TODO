@@ -1,5 +1,11 @@
 
+- Implement lens operators in correct units
+
+- Test source inversion with radio data!
+
 - All TODOs in code
+
+- Documentation!!!
 
 - Clean up unit tests, split into more manageable files
 
@@ -26,4 +32,3 @@
 - Solver framework
 
 - Make the covariance weight application slicker?
-

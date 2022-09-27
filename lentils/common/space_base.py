@@ -19,8 +19,8 @@ class Space:
         self._shape = shape
         pass;
 
-    def new_vector(self):
-        return np.zeros(self._shape, self.dtype)
+    def new_vector(self, value=0.0):
+        return np.full(self._shape, value, dtype=self.dtype)
 
     def copy(self):
         return deepcopy(self)
@@ -63,14 +63,6 @@ class VisibilitySpace(Space):
         if num_stokes != 1 or stokes[0] != 'I':
             raise ValueError("Only stokes 'I' is allowed for now.,,")
         self._shape = (num_channels, num_stokes, num_rows)
-
-        # frequency is in Hz
-        # get Nyquist ddata to inform the grid choice
-        #fmax = np.max(self.channels) 
-        #uvmax = fmax*np.max(self.points[:,:2], axis=0) 
-        #print('fmax, uvmax =', fmax, uvmax)
-        #print('channels =', self.channels)
-
 
     @property
     def num_channels(self):

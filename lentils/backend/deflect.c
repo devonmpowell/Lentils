@@ -247,6 +247,30 @@ void deflect_SIE(parametric_lens lens, double x, double y, double *dx)
 	dx[1] = dx_r*lens.sin_th + dy_r*lens.cos_th;
 
 
+	// from an old branch of the code
+#if 0
+	//Calculate the deflection angle for the SIE lens
+	if( lenses.qh == 0.5)
+	{
+		dx_tmp = (lenses.b*sqrt(lenses.f)/sqrt(1.0-pow(lenses.f,2.0)))*atan(sqrt(1.0-pow(lenses.f,2.0))*sx_r/(psi+lenses.rc));
+		dy_tmp = (lenses.b*sqrt(lenses.f)/sqrt(1.0-pow(lenses.f,2.0)))*atanh(sqrt(1.0-pow(lenses.f,2.0))*sy_r/(psi+lenses.rc*pow(lenses.f,2.0)));
+	}
+
+	//Calculate the deflection angle for SPEMDs from fastell by Barkana
+	else
+	{
+		rc = (lenses.rc*lenses.rc);
+		b =  ( 1.5 - lenses.qh) * (lenses.b/(2.0*sqrt(lenses.f)));
+
+		fastelldefl_(&sx_r,&sy_r,&b,&lenses.qh,&lenses.f,&rc,dfl);
+
+		dx_tmp = dfl[0];
+		dy_tmp = dfl[1];
+	}
+#endif
+
+
+
 }
 
 #if 0

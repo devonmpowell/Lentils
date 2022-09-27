@@ -181,24 +181,25 @@ class NUFFTTests(TestCase):
     def test_dirty_beam(self):
 
         # set up proper pixel sizes relative to reference fits file
+        # We use a truncated space on only the center region of the beam to save time
         nx = 64
-        hnx = nx//2
         cx = 1024
         dx = 1.5/cx
-        extent = dx*hnx
-
-        # test the dirty beam of a mock dataset against the DFT computation, and a reference file
-        uvdata = Dataset.visibilities_from_uvfits(f'{testpath}/data_radio_2d/input/j0751_small_snr1x.uvfits')
+        extent = 0.5*dx*nx
         image_space = ImageSpace(shape=(nx,nx), bounds=[(-extent, extent), (-extent,extent)])
-        nufft = NUFFTOperator(uvdata.space, image_space)
-        vdata = np.ones(uvdata.space.shape, dtype=np.complex128)
-        cvec = uvdata.covariance_operator.T * vdata
+
+        # load the radio data and compute the dirty image with NUFFT
+        uvdata = RadioDataset(f'{testpath}/data_radio_2d/input/j0751_small_snr1x.uvfits',
+                image_space=image_space)
+        apvec = uvdata.dirty_beam
+
+        # check that the sum of weights is equal to the beam max
+        cvec = uvdata.covariance_operator.T * uvdata.space.new_vector(1.0)
         wtsum = np.sum(np.abs(cvec))
-        apvec = nufft.T * cvec
         self.assertAlmostEqual(1.0, np.max(apvec)/wtsum, delta=errtol) 
 
         # check against DFT computation
-        dft = DFTOperator(uvdata.space, image_space)
+        dft = DFTOperator(uvdata.space, uvdata._space_beam)
         dftvec = dft.T * cvec
         dftvec = np.real(dftvec) # TODO: make real/complex types smarter
         resid_max = np.max(np.abs(dftvec-apvec))/np.max(np.abs(dftvec))
@@ -206,7 +207,7 @@ class NUFFTTests(TestCase):
 
         # check against reference data
         with fits.open(f'{testpath}/data_radio_2d/reference/dirty_beam_reference_fft.fits') as f:
-            reference = f['PRIMARY'].data.T[cx-hnx:cx+hnx,cx-hnx:cx+hnx,0]
+            reference = f['PRIMARY'].data.T[cx-nx:cx+nx,cx-nx:cx+nx,0]
         resid = (reference-apvec)/wtsum
         resid_max = np.max(np.abs(resid))
         self.assertLess(resid_max, errtol) 
@@ -214,17 +215,16 @@ class NUFFTTests(TestCase):
 
     def test_dirty_image(self):
 
-        uvdata = Dataset.visibilities_from_uvfits(f'{testpath}/data_radio_2d/input/j0751_small_snr1x.uvfits')
         image_space = ImageSpace(shape=(1024,1024), bounds=[(-1.15, 0.35,), (-0.65, 0.85)])
-        nufft = NUFFTOperator(uvdata.space, image_space)
-        cvec = uvdata.covariance_operator.T * uvdata.data[0,0,:] # TODO: take care of broadcastability 
-        apvec = nufft.T * cvec
+        uvdata = RadioDataset(f'{testpath}/data_radio_2d/input/j0751_small_snr1x.uvfits',
+                image_space=image_space)
+        dirty_image = uvdata.dirty_image
 
         # compare to a reference FFT dataset 
         with fits.open(f'{testpath}/data_radio_2d/reference/dirty_image_reference_fft.fits') as f:
             reference = f['PRIMARY'].data.T[:,:,0]
         refmax = np.max(np.abs(reference))
-        resid = (reference-apvec)/refmax
+        resid = (reference-dirty_image)/refmax
         resid_max = np.max(np.abs(resid))
         self.assertLess(resid_max, errtol) 
 
@@ -234,7 +234,7 @@ class NUFFTTests(TestCase):
         with fits.open(f'{testpath}/data_radio_2d/input/mask_1024_zoom.fits') as f:
             mask = f['PRIMARY'].data.T.astype(bool)
         refmax = np.max(np.abs(reference))
-        resid = (reference-apvec)/refmax
+        resid = (reference-dirty_image)/refmax
         resid_max = np.max(np.abs(resid*mask))
         self.assertLess(resid_max, errtol) 
 
@@ -243,18 +243,17 @@ class SolverTests(TestCase):
 
     def test_cg(self):
 
-        #return True
-
-        # load image data just for mask and noise
-        imdata = Dataset.image_from_fits(f'{testpath}/data_optical_2d/input/data.fits',
+        # load image data 
+        # it creats the data covariance and psf operators automatically
+        imdata = OpticalDataset(f'{testpath}/data_optical_2d/input/data.fits',
                 noise=0.0304896, maskfits=f'{testpath}/data_optical_2d/input/mask.fits', 
+                psf=f'{testpath}/data_optical_2d/input/psf.fits', psf_support=21,
                 bounds=[(-0.72,0.72),(-0.67,0.67)])
         image_space = imdata.space 
+        psfop = imdata.blurring_operator
         covop = imdata.covariance_operator
-        #print("data max =", np.max(imdata.data))
-        #print("data shape =", imdata.data.shape)
-        #plt.imshow((imdata.data*imdata.mask).T, extent=image_space._bounds.flatten(), **imargs)
-        #plt.show()
+        plt.imshow((imdata.data*imdata.mask).T, extent=image_space._bounds.flatten(), **imargs)
+        plt.show()
 
 
         # make a lens model
@@ -264,28 +263,13 @@ class SolverTests(TestCase):
         points = src_space.points
 
 
-        # a mock source
+        # make some mock data... 
         testsrc = np.zeros(src_space.shape) 
         cr = np.array([-0.03,0.0])
         testsrc += 2.0*np.exp(-1.0/(2.0*0.05**2)*np.sum((points-cr)**2, axis=-1))
         cr = np.array([0.03,-0.05])
         testsrc += 2.0*np.exp(-1.0/(2.0*0.02**2)*np.sum((points-cr)**2, axis=-1))
-        #plt.tripcolor(points[:,0],points[:,1], src_space.tris, testsrc, shading='gouraud')
-        #plt.title('Mock source')
-        #plt.show()
-
-        # apply operators and noise
-        lensed = lensop * testsrc
-        #print('lensed max =', np.max(np.abs(lensed)))
-        #plt.imshow(lensed.T, extent=image_space._bounds.flatten(), **imargs)
-        #plt.show()
-
-
-        psfop = ConvolutionOperator(image_space, fitsfile=f'{testpath}/data_optical_2d/input/psf.fits', kernelsize=21, fft=False)
-        blurred = psfop * lensed
-        mockdata = blurred + np.random.normal(scale=imdata.sigma) 
-        #plt.imshow(mockdata.T, extent=image_space._bounds.flatten(), **imargs)
-        #plt.show()
+        mockdata = psfop * lensop * testsrc + np.random.normal(scale=imdata.sigma) 
 
         # source prior
         lams = 5.0e2
@@ -295,7 +279,6 @@ class SolverTests(TestCase):
         response = psfop * lensop
         lhs = response.T * covop * response + reg_op
         rhs = response.T * covop * mockdata 
-
 
         # preconditioner
         # TODO: cholesky rather than LU?
