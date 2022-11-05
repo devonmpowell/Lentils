@@ -57,8 +57,8 @@ class c_nufft(Structure):
             ('padx', c_int), ('pady', c_int),
             ('nx_pad', c_int), ('ny_pad', c_int),
             ('half_ny_pad', c_int), ('pad_factor', c_double),
+            ('xmin', c_double), ('xmax', c_double), ('ymin', c_double), ('ymax', c_double),
             ('dx', c_double), ('dy', c_double),
-            ('cx', c_double), ('cy', c_double),
             ('du', c_double), ('dv', c_double),
             ('nchannels', c_int),('nstokes', c_int),('nrows', c_int),
             ('uv', c_double_p), ('channels', c_double_p),
@@ -77,6 +77,8 @@ libnufft.fft2d.restype = None
 libnufft.fft2d.argtypes = [POINTER(c_nufft), c_double_p, c_complex_p, c_int]
 libnufft.grid_cpu.restype = None
 libnufft.grid_cpu.argtypes = [POINTER(c_nufft), c_complex_p, c_complex_p, c_int]
+libnufft.dft_matrix_csr.restype = None
+libnufft.dft_matrix_csr.argtypes = [POINTER(c_nufft), c_bool_p, c_int_p, c_int_p, c_double_p]
 libnufft.convolution_matrix_csr.restype = None
 libnufft.convolution_matrix_csr.argtypes = [c_int, c_int, c_int, c_int, 
         c_double_p, c_int_p, c_int_p, c_double_p]

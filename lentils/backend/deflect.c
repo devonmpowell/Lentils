@@ -36,7 +36,7 @@ void deflect_points(parametric_lens lens, double *p_in, int npoints, double *p_o
 
 		// TODO: why is deflect_SIE different?
 		// TODO: normalize to Einstein radius
-		//deflect_SIE(lens, x, y, dx);
+		//deflect_SIE(lens, x, y, alpha);
 		deflect_PEMD_series(lens, x, y, alpha, want_deriv, dtmp);
 
 		// Calculate the deflection angle for the external shear

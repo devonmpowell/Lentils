@@ -1,6 +1,8 @@
 
 - Implement lens operators in correct units
 
+- Mask as part of VisibilitySpace
+
 - Test source inversion with radio data!
 
 - All TODOs in code

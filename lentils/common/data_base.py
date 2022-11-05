@@ -66,7 +66,7 @@ class Dataset:
 
 class RadioDataset(Dataset):
 
-    def __init__(self, file, image_space=None, combine_stokes=True, mfs=True):
+    def __init__(self, file, image_space=None, image_mask=None, combine_stokes=True, mfs=True):
 
         uvspace, data, sigma, mask = _load_uvfits(file, combine_stokes)
 
@@ -79,6 +79,10 @@ class RadioDataset(Dataset):
             self.image_space = image_space
             self.nufft_operator = NUFFTOperator(self.space, self.image_space)
 
+        # load mask if there is one
+        if image_mask is not None:
+            with fits.open(image_mask) as f:
+                self.image_mask = f['PRIMARY'].data[:,:].T.copy()
 
     @property
     def blurring_operator(self):
@@ -86,8 +90,12 @@ class RadioDataset(Dataset):
 
     @property
     def blurred_covariance_operator(self):
-        # TODO: make this smarter, to save one object
-        return None
+        try:
+            return self._fcf
+        except AttributeError:
+            #self._fcf = ConvolutionOperator(self.image_space, kerneldata=self.dirty_beam, fft=True)
+            self._fcf = self.nufft_operator.T * self.covariance_operator * self.nufft_operator
+            return self._fcf
 
     @property
     def dirty_image(self):
@@ -116,7 +124,7 @@ class RadioDataset(Dataset):
 
 class OpticalDataset(Dataset):
 
-    def __init__(self, datafits, maskfits=None, noise=None, psf=None, psf_support=None, bounds=[(-1.0,1.0),(-1.0,1.0)], dtype=np.float64):
+    def __init__(self, datafits, mask=None, noise=None, psf=None, psf_support=None, bounds=[(-1.0,1.0),(-1.0,1.0)], dtype=np.float64):
 
         # get the raw data
         # assumes order (channel,y,x), so we take the transpose
@@ -124,12 +132,6 @@ class OpticalDataset(Dataset):
             data = f['PRIMARY'].data.T.copy()
         if data.ndim != 2:
             raise ValueError("data must be 2D for now...")
-
-        # load mask if there is one
-        mask = None
-        if maskfits is not None:
-            with fits.open(maskfits) as f:
-                mask = f['PRIMARY'].data[:,:].T.copy()
 
         # load noise if given 
         sigma = None
@@ -140,9 +142,9 @@ class OpticalDataset(Dataset):
                 sigma = noise*np.ones_like(data)
 
         # create a space and a vector
-        space = ImageSpace(shape=data.shape, bounds=bounds)
+        space = ImageSpace(shape=data.shape, bounds=bounds, mask=mask)
         super().__init__(name='Dataset from file {}'.format(datafits), \
-                data=data, sigma=sigma, mask=mask, space=space)
+                data=data, sigma=sigma, mask=space.mask, space=space)
 
         # load the psf operator
         if psf is not None:

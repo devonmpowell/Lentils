@@ -127,7 +127,7 @@ class ImageSpace(Space):
 
     # TODO: multiple channels
 
-    def __init__(self, name='ImageSpace', shape=(128,128), bounds=[(-1.0,1.0),(-1.0,1.0)], channels=[], axis_names=['x','y']):
+    def __init__(self, name='ImageSpace', shape=(128,128), bounds=[(-1.0,1.0),(-1.0,1.0)], channels=[], axis_names=['x','y'], mask=None):
 
         super().__init__()
         self.name = name
@@ -135,6 +135,14 @@ class ImageSpace(Space):
         self._bounds = np.array(bounds, dtype=np.float64).reshape((-1,2))
         self._shape = shape
         self._ndim = len(self._shape)
+
+        # load mask if there is one
+        if mask is not None:
+            with fits.open(mask) as f:
+                self.mask = f['PRIMARY'].data[:,:].T.astype(np.bool_, order='C')
+        else:
+            self.mask = np.ones(shape, dtype=np.bool_)
+
         assert self._ndim == self._bounds.shape[0]
         self._dx = np.array([(bounds[ax][1]-bounds[ax][0])/self.shape[ax] for ax in range(self._ndim)])
         assert self._ndim == len(axis_names) 

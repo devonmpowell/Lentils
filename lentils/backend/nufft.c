@@ -102,9 +102,96 @@ void zero_pad(nufft_pars *nufft, double *in, double *out, int direction) {
 }
 #endif
 
+
+
+void dft_matrix_csr(nufft_pars *nufft, char *mask, int *row_inds, int *cols, double *vals)
+{
+
+	int row, col, i, vis, iim, jim, odd;
+	double x, y, u, v, arg, val;
+
+	int ch_vis = 0;
+	for(row = 0, i = 0; row < 2*nufft->nrows; ++row)  {
+
+		vis = row/2;
+		odd = row%2;
+		row_inds[row] = i;
+		
+		for(iim = 0, col = 0; iim < nufft->nx_im; ++iim)
+		for(jim = 0; jim < nufft->ny_im; ++jim, ++col) {
+
+			if(!mask[col]) continue;
+
+			u = nufft->uv[3*vis+0]*nufft->channels[ch_vis];
+			v = -nufft->uv[3*vis+1]*nufft->channels[ch_vis];
+
+
+			x = iim*nufft->dx + nufft->xmin;
+			y = jim*nufft->dy + nufft->ymin;
+			arg = -2.0*M_PI*(u*x+v*y);
+
+			if(odd) {
+				val = sin(arg);
+			}
+			else {
+				val = cos(arg);
+			}
+
+			// casted points
+			vals[i] = val; 
+			cols[i++] = col; 
+
+		}
+	}
+	row_inds[row] = i;
+
+}
+
+
+
 void convolution_matrix_csr(int im_nx, int im_ny, int k_nx, int k_ny, double *kernel, int *row_inds, int *cols, double *vals)
 {
 
+	// TODO: use the image-plane mask!
+#if 0
+
+	int row, i, iim, jim, v, cast_idx, uncast_idx, tind, p[3];
+	double atmp, stmp[2], pos_tmp[6], weights[3];
+	for(iim = 0, i = 0, row = 0, cast_idx = 0, uncast_idx = 0; iim < im_nx; ++iim)
+	for(jim = 0; jim < im_ny; ++jim, ++row) {
+		row_inds[row] = i;
+		if(!mask[row]) continue;
+		if(iim%ncast || jim%ncast) {
+			// uncasted points
+			stmp[0] = uncasted_points[2*uncast_idx+0];
+			stmp[1] = uncasted_points[2*uncast_idx+1];
+			tind = uncasted_tri_inds[uncast_idx++];
+			if(tind < 0) continue;
+			for(v = 0; v < 3; ++v) {
+				p[v] = all_tri_inds[3*tind+v];
+				pos_tmp[2*v+0] = casted_points[2*p[v]+0];
+				pos_tmp[2*v+1] = casted_points[2*p[v]+1];
+			
+			}
+			triangle_geometry(stmp, pos_tmp, weights, &atmp);
+			for(v = 0; v < 3; ++v) {
+				vals[i] = weights[v]; 
+				cols[i++] = p[v];
+			}
+		}
+		else {
+			// casted points
+			vals[i] = 1.0; 
+			cols[i++] = cast_idx++;
+		}
+	}
+	row_inds[row] = i;
+
+
+
+#endif
+
+	// TODO: mask
 	int row, col, i, iim, jim, ik, jk, icc, jcc;
 	int k_xmid = (k_nx+1)/2;
 	int k_ymid = (k_ny+1)/2;
@@ -145,10 +232,12 @@ void init_nufft(nufft_pars *nufft, int nx, int ny, double xmin, double ymin, dou
 	// assumes input dimensions are in arcsec
 	// converts to radians for internal use
 	// TODO: check what the units should be
+	nufft->xmin = xmin*ARCSEC_TO_RADIANS; 
+	nufft->xmax = xmax*ARCSEC_TO_RADIANS; 
+	nufft->ymin = ymin*ARCSEC_TO_RADIANS; 
+	nufft->ymax = ymax*ARCSEC_TO_RADIANS; 
 	nufft->dx = (xmax-xmin)/nx*ARCSEC_TO_RADIANS; 
 	nufft->dy = (ymax-ymin)/ny*ARCSEC_TO_RADIANS; 
-	nufft->cx = 0.5*(xmax+xmin)*ARCSEC_TO_RADIANS;
-	nufft->cy = 0.5*(ymax+ymin)*ARCSEC_TO_RADIANS;
 	nufft->du = 1.0/(nufft->dx*nufft->nx_pad); 
 	nufft->dv = 1.0/(nufft->dy*nufft->ny_pad); 
 
@@ -237,8 +326,8 @@ void grid_cpu(nufft_pars *nufft, double *vis, double *grid, int direction) {
 					// TODO: move this translation elsewhere
 					double vis_re = vis[2*visidx+0];
 					double vis_im = vis[2*visidx+1];
-					double ccx = nufft->cx;
-					double ccy = nufft->cy;
+					double ccx = 0.5*(nufft->xmin + nufft->xmax);
+					double ccy = 0.5*(nufft->ymin + nufft->ymax);
 					double cosp = cos(TWO_PI*(u_tmp*ccx + v_tmp*ccy));
 					double sinp = sin(TWO_PI*(u_tmp*ccx + v_tmp*ccy));
 #pragma omp atomic

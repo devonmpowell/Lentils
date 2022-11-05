@@ -98,7 +98,13 @@ class Operator:
             try: 
                 # TODO: Broadcasting! Slice the arrays properly rather than just assume flatten works
                 # TODO: make spaces aware of real -> complex mapping!
-                return self._mat.dot(other.flatten()).reshape(self.space_left.shape)
+                #return self._mat.dot(other.flatten()).reshape(self.space_left.shape)
+                if isinstance(self,DFTOperator):
+                    # TODO: should not need this special case...
+                    return self._mat.dot(other.view(np.float64).flatten()).view(self.space_left.dtype).reshape(self.space_left.shape)
+                else:
+
+                    return self._mat.dot(other.flatten()).reshape(self.space_left.shape)
             except AttributeError:
                 return self._matrixfree_forward(other)
         elif isinstance(other, Operator):
@@ -229,11 +235,13 @@ class ConvolutionOperator(Operator):
 
     # TODO: channel-dependent PSF?
     def _matrixfree_forward(self, vec):
-        return convolve_fft(vec, self._kernel, boundary='fill', fill_value=0.0)
+        # TODO: normalization?
+        #norm = np.product(self.space_right._dx)
+        return norm**-2 * convolve_fft(vec, self._kernel, boundary='fill', fill_value=0.0) 
 
     def _matrixfree_transpose(self, vec):
         # TODO: is this correct?
-        return convolve(vec, self._kernel[::-1,::-1].copy(order='C'), boundary='fill', fill_value=0.0)
+        return convolve_fft(vec, self._kernel[::-1,::-1].copy(order='C'), boundary='fill', fill_value=0.0)
 
 class GridOperator(Operator):
 
@@ -412,7 +420,6 @@ class NUFFTOperator(CompositeOperatorProduct):
 
 class DFTOperator(Operator):
 
-    # TODO: implement in C
     def __init__(self, vis_space, image_space, **superargs):
         
         if not isinstance(image_space, ImageSpace): 
@@ -420,14 +427,27 @@ class DFTOperator(Operator):
         if not isinstance(vis_space, VisibilitySpace): 
             raise TypeError("vis_space must be of type VisibilitySpace")
 
-        # TODO: make the matrices operate on the native space shape
-        self._mat = np.zeros((vis_space.num_rows, np.product(image_space.shape)), dtype=np.complex128)
-        imcoords = image_space.points.reshape((-1,2))*(4.8481368111e-6)
-        for i, k in enumerate(vis_space.points[:,:2]*vis_space.channels[0]):
-            arg = -2*np.pi*(k[0]*imcoords[:,0]-k[1]*imcoords[:,1])
-            self._mat[i] = np.exp(-1j*arg)
-            #self._mat[2*i+0] = np.cos(arg)
-            #self._mat[2*i+1] = np.sin(arg)
+        # initialize the c backend
+        self._cpars = c_nufft()
+        pad_factor=2
+        kernel_support=4
+        image_shape = image_space.shape
+        image_bounds = image_space._bounds
+        libnufft.init_nufft(
+                self._cpars, image_shape[0], image_shape[1], image_bounds[0,0], 
+                image_bounds[1,0], image_bounds[0,1], image_bounds[1,1],
+                pad_factor, kernel_support, vis_space.num_rows, vis_space.num_channels, vis_space.num_stokes, 
+                vis_space.points, vis_space.channels)
+
+        # make the matrix
+        num_rows = 2*vis_space.size # complex visibilities, so multiply rows by 2
+        nnz_per_row = np.sum(image_space.mask)
+        num_vals = num_rows*nnz_per_row
+        row_inds = np.zeros(num_rows+1, dtype=np.int32) 
+        cols = np.zeros(num_vals, dtype=np.int32) 
+        vals = np.zeros(num_vals, dtype=np.float64) 
+        libnufft.dft_matrix_csr(self._cpars, image_space.mask, row_inds, cols, vals)
+        self._mat = sparse.csr_matrix((vals,cols,row_inds), shape=(num_rows,image_space.size))
 
         # Finish up
         super().__init__(vis_space, image_space)
@@ -524,6 +544,7 @@ class DelaunayLensOperator(LensOperator):
             image_mask = mask.astype(np.bool_)
         else:
             image_mask = np.ones(image_space.shape, dtype=np.bool_)
+        self.image_mask = image_mask
 
         # make image-plane masks containing "casted" and "uncasted" points
         image_points = image_space.points

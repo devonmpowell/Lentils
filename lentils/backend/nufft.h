@@ -21,8 +21,8 @@ typedef struct {
 	double pad_factor;
 
 	// cell sizes
+	double xmin, xmax, ymin, ymax;
 	double dx, dy;
-	double cx, cy;
 	double du, dv;
 
 	// visibility size

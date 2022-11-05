@@ -181,8 +181,9 @@ class NUFFTTests(TestCase):
     def test_dirty_beam(self):
 
         # set up proper pixel sizes relative to reference fits file
-        # We use a truncated space on only the center region of the beam to save time
-        nx = 64
+        # We use a truncated space on only the center region of the beam 
+        # to save time with the direct FT
+        nx = 32 
         cx = 1024
         dx = 1.5/cx
         extent = 0.5*dx*nx
@@ -201,8 +202,8 @@ class NUFFTTests(TestCase):
         # check against DFT computation
         dft = DFTOperator(uvdata.space, uvdata._space_beam)
         dftvec = dft.T * cvec
-        dftvec = np.real(dftvec) # TODO: make real/complex types smarter
-        resid_max = np.max(np.abs(dftvec-apvec))/np.max(np.abs(dftvec))
+        resid = (dftvec-apvec)/wtsum
+        resid_max = np.max(np.abs(resid))
         self.assertLess(resid_max, errtol) 
 
         # check against reference data
@@ -215,15 +216,23 @@ class NUFFTTests(TestCase):
 
     def test_dirty_image(self):
 
-        image_space = ImageSpace(shape=(1024,1024), bounds=[(-1.15, 0.35,), (-0.65, 0.85)])
+        image_space = ImageSpace(shape=(1024,1024), bounds=[(-1.15, 0.35,), (-0.65, 0.85)], 
+                mask=f'{testpath}/data_radio_2d/input/mask_1024_zoom.fits')
         uvdata = RadioDataset(f'{testpath}/data_radio_2d/input/j0751_small_snr1x.uvfits',
                 image_space=image_space)
         dirty_image = uvdata.dirty_image
+        refmax = np.max(np.abs(dirty_image))
+
+        # check against DFT computation
+        dft = DFTOperator(uvdata.space, image_space)
+        dftvec = dft.T * uvdata.covariance_operator.T * uvdata.data
+        resid = (dftvec-dirty_image)/refmax
+        resid_max = np.max(np.abs(resid*image_space.mask))
+        self.assertLess(resid_max, errtol) 
 
         # compare to a reference FFT dataset 
         with fits.open(f'{testpath}/data_radio_2d/reference/dirty_image_reference_fft.fits') as f:
             reference = f['PRIMARY'].data.T[:,:,0]
-        refmax = np.max(np.abs(reference))
         resid = (reference-dirty_image)/refmax
         resid_max = np.max(np.abs(resid))
         self.assertLess(resid_max, errtol) 
@@ -231,17 +240,203 @@ class NUFFTTests(TestCase):
         # compare to reference DFT data set
         with fits.open(f'{testpath}/data_radio_2d/reference/dirty_image_reference_dft.fits') as f:
             reference = f['PRIMARY'].data.T[:,:,0]
-        with fits.open(f'{testpath}/data_radio_2d/input/mask_1024_zoom.fits') as f:
-            mask = f['PRIMARY'].data.T.astype(bool)
-        refmax = np.max(np.abs(reference))
         resid = (reference-dirty_image)/refmax
-        resid_max = np.max(np.abs(resid*mask))
+        resid_max = np.max(np.abs(resid*image_space.mask))
         self.assertLess(resid_max, errtol) 
 
 
 class SolverTests(TestCase):
 
+    def test_cg_radio(self):
+
+        return
+
+        image_space = ImageSpace(shape=(1024,1024), bounds=[(-1.15, 0.35,), (-0.65, 0.85)])
+        uvdata = RadioDataset(f'{testpath}/data_radio_2d/input/j0751_small_snr1x.uvfits',
+                image_space=image_space, image_mask=f'{testpath}/data_radio_2d/input/mask_1024_zoom.fits')
+
+        # MAP lens model for J0751 PL only 
+        lensmodel = LensModel(b=0.462437, th=19.162881, f=0.899243, x=-0.441519, y=0.175067, 
+                rc=0.0, qh=0.449087, ss=0.092515, sa=73.698888, z=0.35)
+        lensop = DelaunayLensOperator(image_space, lensmodel, z_src=3.2, ncasted=1, mask=uvdata.image_mask)
+        src_space = lensop.space_right
+        points = src_space.points
+
+        # source prior
+        lams = 5.0e14
+        reg_op = PriorCovarianceOperator(src_space, type='gradient', strength=lams)
+
+        # Set up operators
+        lhs = lensop.T * uvdata.blurred_covariance_operator * lensop + reg_op
+        rhs = lensop.T * uvdata.dirty_image
+
+
+        #plt.imshow(uvdata.dirty_image.T, extent=image_space._bounds.flatten(), **imargs)
+        #plt.show()
+
+        plt.imshow(uvdata.dirty_beam.T, extent=uvdata._space_beam._bounds.flatten(), **imargs)
+        plt.xlim(-0.1,0.1)
+        plt.ylim(-0.1,0.1)
+        plt.show()
+
+
+        testim = image_space.new_vector()
+        testim[512,512] = 1.0
+        plt.imshow(testim.T, extent=image_space._bounds.flatten(), **imargs)
+        plt.show()
+
+        blurred = uvdata.blurred_covariance_operator * testim 
+
+        plt.imshow(blurred.T, extent=image_space._bounds.flatten(), **imargs)
+        plt.show()
+
+
+        #return
+
+        # preconditioner
+        # TODO: cheaper setup for weight sum
+        wtsum = np.sum(np.abs(uvdata.covariance_operator.T * uvdata.space.new_vector(1.0)))
+        lu = linalg.splu(reg_op._mat + wtsum * lensop._mat.T @ lensop._mat)
+        def logdet(dcmp):
+            return np.sum(np.log(dcmp.U.diagonal().astype(np.complex128))) + np.sum(np.log(dcmp.L.diagonal().astype(np.complex128)))
+        print("Logdet (PC) =", logdet(lu))
+
+        # solve
+        #i = 0
+        def lhs_fun(vec):
+            #global i
+            #print("Apply LHS", i)
+
+            print(np.min(vec), np.max(vec))
+            plt.tripcolor(points[:,0],points[:,1], src_space.tris, vec, shading='gouraud')
+            plt.title('Iter')
+            plt.show()
+
+
+            #i += 1
+            return lhs.apply(vec)
+
+
+        #lhs_op = linalg.LinearOperator((src_space.size,src_space.size), matvec=lhs.apply)
+        lhs_op = linalg.LinearOperator((src_space.size,src_space.size), matvec=lhs_fun)
+        pc = linalg.LinearOperator((src_space.size, src_space.size), lu.solve)
+        x, info = linalg.cg(lhs_op, rhs, tol=1.0e-10, atol=1.0e-14, M=pc)
+
+
+        plt.tripcolor(points[:,0],points[:,1], src_space.tris, x, shading='gouraud')
+        print("Solution max =", np.max(x))
+        plt.title('Solution')
+        plt.show()
+
+
+        resid = x - testsrc
+        print('Source resid = ', np.sum(resid**2)**0.5 / np.sum(rhs**2)**0.5)
+        #plt.tripcolor(points[:,0],points[:,1], src_space.tris, resid, shading='gouraud')
+        #plt.title('Mock Resid')
+        #plt.show()
+
+
+        resid = lhs*x-rhs
+        print('CG resid = ', np.sum(resid**2)**0.5 / np.sum(rhs**2)**0.5)
+        #plt.tripcolor(points[:,0],points[:,1], src_space.tris, resid, shading='gouraud')
+        #plt.title('CG Resid')
+        #plt.show()
+
+        # Direct solve of the full system
+        # TODO: lhs._mat !
+        lu = linalg.splu(reg_op._mat + lensop._mat.T @ psfop._mat.T @ covop._mat @ psfop._mat @ lensop._mat)
+        print("Logdet (direct) =", logdet(lu))
+
+        # solve
+        x = lu.solve(rhs)
+
+        plt.tripcolor(points[:,0],points[:,1], src_space.tris, x, shading='gouraud')
+        print("Solution max =", np.max(x))
+        plt.title('Solution (direct)')
+        plt.show()
+
+
+
+    def test_direct_radio(self):
+
+        #return
+
+        image_space = ImageSpace(shape=(1024,1024), bounds=[(-1.15, 0.35,), (-0.65, 0.85)], 
+                            mask=f'{testpath}/data_radio_2d/input/mask_1024_zoom.fits')
+        uvdata = RadioDataset(f'{testpath}/data_radio_2d/input/j0751_small_snr1x.uvfits',
+                image_space=image_space, image_mask=f'{testpath}/data_radio_2d/input/mask_1024_zoom.fits')
+
+        # MAP lens model for J0751 PL only 
+        lensmodel = LensModel(b=0.462437, th=19.162881, f=0.899243, x=-0.441519, y=0.175067, 
+                rc=0.0, qh=0.449087, ss=0.092515, sa=73.698888, z=0.35)
+        lensop = DelaunayLensOperator(image_space, lensmodel, z_src=3.2, ncasted=3, mask=uvdata.image_mask)
+        src_space = lensop.space_right
+        points = src_space.points
+
+        # source prior
+        lams = 5.0e14
+        reg_op = PriorCovarianceOperator(src_space, type='gradient', strength=lams)
+
+        # check against DFT computation
+        dft = DFTOperator(uvdata.space, image_space)
+
+
+        mm = dft._mat
+        print("DFT mat:", mm.shape, mm.dtype)
+
+        mm = uvdata.covariance_operator._mat
+        print("Covariance mat:", mm.shape, mm.dtype)
+
+
+        lhs = lensop.T._mat * dft.T._mat * uvdata.covariance_operator._mat * dft._mat * lensop._mat + reg_op._mat
+        rhs = lensop.T._mat * dft.T._mat * uvdata.covariance_operator._mat * uvdata.data 
+
+        lu = linalg.splu(lhs)
+        def logdet(dcmp):
+            return np.sum(np.log(dcmp.U.diagonal().astype(np.complex128))) + np.sum(np.log(dcmp.L.diagonal().astype(np.complex128)))
+        print("Logdet (PC) =", logdet(lu))
+
+        x = lu.solve(rhs)
+
+
+        plt.tripcolor(points[:,0],points[:,1], src_space.tris, x, shading='gouraud')
+        print("Solution max =", np.max(x))
+        plt.title('Solution')
+        plt.show()
+
+
+        resid = x - testsrc
+        print('Source resid = ', np.sum(resid**2)**0.5 / np.sum(rhs**2)**0.5)
+        #plt.tripcolor(points[:,0],points[:,1], src_space.tris, resid, shading='gouraud')
+        #plt.title('Mock Resid')
+        #plt.show()
+
+
+        resid = lhs*x-rhs
+        print('CG resid = ', np.sum(resid**2)**0.5 / np.sum(rhs**2)**0.5)
+        #plt.tripcolor(points[:,0],points[:,1], src_space.tris, resid, shading='gouraud')
+        #plt.title('CG Resid')
+        #plt.show()
+
+        # Direct solve of the full system
+        # TODO: lhs._mat !
+        lu = linalg.splu(reg_op._mat + lensop._mat.T @ psfop._mat.T @ covop._mat @ psfop._mat @ lensop._mat)
+        print("Logdet (direct) =", logdet(lu))
+
+        # solve
+        x = lu.solve(rhs)
+
+        plt.tripcolor(points[:,0],points[:,1], src_space.tris, x, shading='gouraud')
+        print("Solution max =", np.max(x))
+        plt.title('Solution (direct)')
+        plt.show()
+
+
+
+
     def test_cg(self):
+
+        return
 
         # load image data 
         # it creats the data covariance and psf operators automatically
