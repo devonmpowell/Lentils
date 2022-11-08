@@ -97,14 +97,7 @@ class Operator:
                 raise ValueError(f"Incompatible shapes! {self.space_right.shape}, {other.shape}")
             try: 
                 # TODO: Broadcasting! Slice the arrays properly rather than just assume flatten works
-                # TODO: make spaces aware of real -> complex mapping!
-                #return self._mat.dot(other.flatten()).reshape(self.space_left.shape)
-                if isinstance(self,DFTOperator):
-                    # TODO: should not need this special case...
-                    return self._mat.dot(other.view(np.float64).flatten()).view(self.space_left.dtype).reshape(self.space_left.shape)
-                else:
-
-                    return self._mat.dot(other.flatten()).reshape(self.space_left.shape)
+                return self._mat.dot(other.view(np.float64).flatten()).view(self.space_left.dtype).reshape(self.space_left.shape)
             except AttributeError:
                 return self._matrixfree_forward(other)
         elif isinstance(other, Operator):
@@ -236,7 +229,7 @@ class ConvolutionOperator(Operator):
     # TODO: channel-dependent PSF?
     def _matrixfree_forward(self, vec):
         # TODO: normalization?
-        #norm = np.product(self.space_right._dx)
+        norm = 1.0 # np.product(self.space_right._dx)
         return norm**-2 * convolve_fft(vec, self._kernel, boundary='fill', fill_value=0.0) 
 
     def _matrixfree_transpose(self, vec):
@@ -280,9 +273,25 @@ class DiagonalOperator(Operator):
 
         # TODO: generalize this to higher than space.shape 
         # TODO: check data and space compatibility
+
+        # covariance matrix entries must be real
         self._data = data.astype(np.float64) 
         self._shape = self._data.shape
-        self._mat = sparse.spdiags(self._data.flatten(), 0, np.product(self._shape), np.product(self._shape))
+
+        # if the data are complex, expand each entry
+        # to multiply the real and complex parts separately
+        matdim = np.product(self._shape)
+        matdata = self._data.flatten()
+        if space.dtype == np.float64:
+            self._mat = sparse.spdiags(matdata, 0, matdim, matdim)
+        elif space.dtype == np.complex128:
+            cmatdata = np.zeros(2*matdim)
+            cmatdata[0::2] = matdata
+            cmatdata[1::2] = matdata
+            self._mat = sparse.spdiags(cmatdata, 0, 2*matdim, 2*matdim)
+        else:
+            raise TypeError("Space data type must be float64 or complex128.")
+
         super().__init__(space, space)
 
 

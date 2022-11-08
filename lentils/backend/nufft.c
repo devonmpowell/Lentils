@@ -231,7 +231,6 @@ void init_nufft(nufft_pars *nufft, int nx, int ny, double xmin, double ymin, dou
 	// cell sizes and center point
 	// assumes input dimensions are in arcsec
 	// converts to radians for internal use
-	// TODO: check what the units should be
 	nufft->xmin = xmin*ARCSEC_TO_RADIANS; 
 	nufft->xmax = xmax*ARCSEC_TO_RADIANS; 
 	nufft->ymin = ymin*ARCSEC_TO_RADIANS; 
@@ -261,17 +260,20 @@ void init_nufft(nufft_pars *nufft, int nx, int ny, double xmin, double ymin, dou
 void grid_cpu(nufft_pars *nufft, double *vis, double *grid, int direction) {
 
 	int i, flatidx, visidx, loopidx_u, loopidx_v, i_u, i_v, ngp_u, ngp_v;
+	int ch_vis, ch_grid, st_vis, st_grid, stokes;
 	double u_tmp, v_tmp, cwgt_re, cwgt_im, kernel, pcenter;
+	double tmp_re, tmp_im, cosp, sinp;
 	double du = nufft->du;
 	double dv = nufft->dv;
-
-	int ch_vis, ch_grid, st_vis, st_grid, stokes;
+	double ccx = 0.5*(nufft->xmin+nufft->xmax);
+	double ccy = 0.5*(nufft->ymin+nufft->ymax);
 
 	for(ch_vis = 0, ch_grid = 0; ch_vis < nufft->nchannels; ++ch_vis) {
-	//for(st_vis = 0, st_grid = 0; st_vis < nufft->nstokes; ++st_vis) {
-	stokes = 0; // TODO
+	//for(st_vis = 0, st_grid = 0; st_vis < nufft->nstokes; ++st_vis) { // TODO
+		stokes = 0;
 
-#pragma omp parallel for private(i,u_tmp,v_tmp,ngp_u,ngp_v,loopidx_u,loopidx_v,i_u,i_v,kernel,pcenter,cwgt_re,cwgt_im,flatidx,visidx) 
+#pragma omp parallel for private(i,u_tmp,v_tmp,cosp,sinp,tmp_re,tmp_im,\
+		ngp_u,ngp_v,loopidx_u,loopidx_v,i_u,i_v,kernel,pcenter,cwgt_re,cwgt_im,flatidx,visidx) 
 		for(i = 0; i < nufft->nrows; ++i) {
 
 			// loop over the local uv grid with the gridding kernel
@@ -279,13 +281,16 @@ void grid_cpu(nufft_pars *nufft, double *vis, double *grid, int direction) {
 			u_tmp = nufft->uv[3*i+0]*nufft->channels[ch_vis];
 			v_tmp = -nufft->uv[3*i+1]*nufft->channels[ch_vis];
 			//double w_tmp = nufft->uv[3*i+2]*nufft->channels[ch_vis];
+			cosp = cos(TWO_PI*(u_tmp*ccx + v_tmp*ccy));
+			sinp = sin(TWO_PI*(u_tmp*ccx + v_tmp*ccy));
 			ngp_u = round(u_tmp/nufft->du);
 			ngp_v = round(v_tmp/nufft->dv);
 			for(loopidx_u = ngp_u - nufft->wsup; loopidx_u <= ngp_u + nufft->wsup; ++loopidx_u)
 			for(loopidx_v = ngp_v - nufft->wsup; loopidx_v <= ngp_v + nufft->wsup; ++loopidx_v) {
 
 				// kernel and weights 
-				// Also factor to center phases
+				// Also factor to center phases so that (0,0) 
+				// is in the middle, rather than the corner
 				// Use a factor of 0.5 so that we don't double-count 
 				// when forming cos() from exp(i*...) 
 				i_u = loopidx_u;
@@ -301,39 +306,36 @@ void grid_cpu(nufft_pars *nufft, double *vis, double *grid, int direction) {
 				while(i_u >= nufft->nx_pad) i_u -= nufft->nx_pad;
 				while(i_v >= nufft->ny_pad) i_v -= nufft->ny_pad;
 
-				// fold since we are using compressed c2r format
+				// fold since we are using the r2c transform
 				if(i_v > nufft->half_ny_pad) {
 					i_u = (nufft->nx_pad - i_u) % nufft->nx_pad;
 					i_v = nufft->ny_pad - i_v; 
 					cwgt_im *= -1;
 				} 
-				if(i_v == 0) {
-					cwgt_re *= 2;
-					cwgt_im *= 2;
-				}
 
 				// we have the weights, now grid or de-grid
 				flatidx = nufft->half_ny_pad*i_u + i_v; // TODO: properly index with multiple channels/stokes
 				visidx = nufft->nrows*nufft->nchannels*stokes+nufft->nrows*ch_vis+i;
 				if(direction == FORWARD) {
+					tmp_re = cwgt_re*grid[2*flatidx+0];
+					tmp_im = cwgt_im*grid[2*flatidx+1];
 #pragma omp atomic
-					vis[2*visidx+0] += cwgt_re*grid[2*flatidx+0];
+					vis[2*visidx+0] += 2*(cosp*tmp_re + sinp*tmp_im);
 #pragma omp atomic
-					vis[2*visidx+1] += cwgt_im*grid[2*flatidx+1];
+					vis[2*visidx+1] += 2*(-sinp*tmp_re + cosp*tmp_im);
 				}
 				else if(direction == ADJOINT) {
-					
-					// TODO: move this translation elsewhere
-					double vis_re = vis[2*visidx+0];
-					double vis_im = vis[2*visidx+1];
-					double ccx = 0.5*(nufft->xmin + nufft->xmax);
-					double ccy = 0.5*(nufft->ymin + nufft->ymax);
-					double cosp = cos(TWO_PI*(u_tmp*ccx + v_tmp*ccy));
-					double sinp = sin(TWO_PI*(u_tmp*ccx + v_tmp*ccy));
+					if(i_v == 0) {
+						// Needed for the r2c transform, only in the adjoint direction
+						cwgt_re *= 2;
+						cwgt_im *= 2;
+					}
+					tmp_re = vis[2*visidx+0];
+					tmp_im = vis[2*visidx+1];
 #pragma omp atomic
-					grid[2*flatidx+0] += cwgt_re*(cosp*vis_re - sinp*vis_im);
+					grid[2*flatidx+0] += cwgt_re*(cosp*tmp_re - sinp*tmp_im);
 #pragma omp atomic
-					grid[2*flatidx+1] += cwgt_im*(sinp*vis_re + cosp*vis_im);
+					grid[2*flatidx+1] += cwgt_im*(sinp*tmp_re + cosp*tmp_im);
 				}
 			}
 		}

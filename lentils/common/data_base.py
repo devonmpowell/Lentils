@@ -75,7 +75,7 @@ class RadioDataset(Dataset):
 
         if image_space is not None:
             if not isinstance(image_space, ImageSpace):
-                raise TypeError("image_space must be of type ImageSpace for now.")
+                raise TypeError("image_space must be of type ImageSpace.")
             self.image_space = image_space
             self.nufft_operator = NUFFTOperator(self.space, self.image_space)
 
@@ -83,6 +83,7 @@ class RadioDataset(Dataset):
         if image_mask is not None:
             with fits.open(image_mask) as f:
                 self.image_mask = f['PRIMARY'].data[:,:].T.copy()
+
 
     @property
     def blurring_operator(self):

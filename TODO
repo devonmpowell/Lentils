@@ -1,6 +1,16 @@
 
 - Implement lens operators in correct units
 
+- Dirty beam convolution instead of explicit FCF
+
+- NUFFT still fails for non-square grids and/or odd grid dimensions... is it the pcenter hack???
+
+- Joint modeling of multiple data sets!!!
+
+- Use Python FFTs
+
+- dtype as part of Space superclass
+
 - Mask as part of VisibilitySpace
 
 - Test source inversion with radio data!

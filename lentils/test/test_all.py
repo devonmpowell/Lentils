@@ -165,16 +165,23 @@ class NUFFTTests(TestCase):
             all_uv.append([np.random.normal(scale=1e5*scale,size=(uv_per_scale,3))])
         all_uv = np.array(all_uv, dtype=np.float64).reshape((-1,3))
         uv_space = VisibilitySpace(name='RandomVisTest', channels=[0.5], uvcoords=all_uv)
+
+        # TODO: test for odd-sized and non-square grids!
         image_space = ImageSpace(shape=(256,256), bounds=[(-0.5,0.7),(-0.7,0.5)])
-        nufft = NUFFTOperator(uv_space, image_space)
 
         # put some fake data through the pipeline
         vdata = np.random.normal(size=(uv_space.shape[0],2)).view(np.complex128)
-        apvec = nufft.T * vdata[:,0]  # TODO: take care of array axes!
+        nufft = NUFFTOperator(uv_space, image_space)
         dft = DFTOperator(uv_space, image_space)
-        dftvec = dft.T * vdata[:,0]  # TODO: take care of array axes!
-        dftvec = np.real(dftvec) # TODO: make real/complex types smarter
-        resid_max = np.max(np.abs(dftvec-apvec))/np.max(np.abs(dftvec))
+        nufftvec = nufft.T * vdata
+        dftvec = dft.T * vdata
+        resid_max = np.max(np.abs(dftvec-nufftvec))/np.max(np.abs(dftvec))
+        self.assertLess(resid_max, errtol) 
+
+        # Test the forward operation as well
+        nufftvis = nufft * dftvec
+        dftvis = dft * dftvec
+        resid_max = np.max(np.abs(dftvis-nufftvis))/np.max(np.abs(dftvis))
         self.assertLess(resid_max, errtol) 
 
 
@@ -258,7 +265,7 @@ class SolverTests(TestCase):
         # MAP lens model for J0751 PL only 
         lensmodel = LensModel(b=0.462437, th=19.162881, f=0.899243, x=-0.441519, y=0.175067, 
                 rc=0.0, qh=0.449087, ss=0.092515, sa=73.698888, z=0.35)
-        lensop = DelaunayLensOperator(image_space, lensmodel, z_src=3.2, ncasted=1, mask=uvdata.image_mask)
+        lensop = DelaunayLensOperator(image_space, lensmodel, z_src=3.2, ncasted=3, mask=uvdata.image_mask)
         src_space = lensop.space_right
         points = src_space.points
 
@@ -269,29 +276,6 @@ class SolverTests(TestCase):
         # Set up operators
         lhs = lensop.T * uvdata.blurred_covariance_operator * lensop + reg_op
         rhs = lensop.T * uvdata.dirty_image
-
-
-        #plt.imshow(uvdata.dirty_image.T, extent=image_space._bounds.flatten(), **imargs)
-        #plt.show()
-
-        plt.imshow(uvdata.dirty_beam.T, extent=uvdata._space_beam._bounds.flatten(), **imargs)
-        plt.xlim(-0.1,0.1)
-        plt.ylim(-0.1,0.1)
-        plt.show()
-
-
-        testim = image_space.new_vector()
-        testim[512,512] = 1.0
-        plt.imshow(testim.T, extent=image_space._bounds.flatten(), **imargs)
-        plt.show()
-
-        blurred = uvdata.blurred_covariance_operator * testim 
-
-        plt.imshow(blurred.T, extent=image_space._bounds.flatten(), **imargs)
-        plt.show()
-
-
-        #return
 
         # preconditioner
         # TODO: cheaper setup for weight sum
@@ -311,14 +295,12 @@ class SolverTests(TestCase):
             plt.tripcolor(points[:,0],points[:,1], src_space.tris, vec, shading='gouraud')
             plt.title('Iter')
             plt.show()
-
-
             #i += 1
             return lhs.apply(vec)
 
 
-        #lhs_op = linalg.LinearOperator((src_space.size,src_space.size), matvec=lhs.apply)
-        lhs_op = linalg.LinearOperator((src_space.size,src_space.size), matvec=lhs_fun)
+        lhs_op = linalg.LinearOperator((src_space.size,src_space.size), matvec=lhs.apply)
+        #lhs_op = linalg.LinearOperator((src_space.size,src_space.size), matvec=lhs_fun)
         pc = linalg.LinearOperator((src_space.size, src_space.size), lu.solve)
         x, info = linalg.cg(lhs_op, rhs, tol=1.0e-10, atol=1.0e-14, M=pc)
 
@@ -379,17 +361,11 @@ class SolverTests(TestCase):
 
         # check against DFT computation
         dft = DFTOperator(uvdata.space, image_space)
+        rhs = lensop.T * dft.T * uvdata.covariance_operator * uvdata.data 
 
-
-        mm = dft._mat
-        print("DFT mat:", mm.shape, mm.dtype)
-
-        mm = uvdata.covariance_operator._mat
-        print("Covariance mat:", mm.shape, mm.dtype)
-
-
-        lhs = lensop.T._mat * dft.T._mat * uvdata.covariance_operator._mat * dft._mat * lensop._mat + reg_op._mat
-        rhs = lensop.T._mat * dft.T._mat * uvdata.covariance_operator._mat * uvdata.data 
+        # TODO: concatenating explicit mats automatically
+        response = dft._mat * lensop._mat
+        lhs = response.T * uvdata.covariance_operator._mat * response + reg_op._mat
 
         lu = linalg.splu(lhs)
         def logdet(dcmp):
