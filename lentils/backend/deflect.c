@@ -1,9 +1,4 @@
 
-//#define PY_SSIZE_T_CLEAN
-//#include <Python.h>
-//#include <structmember.h>
-//#include <numpy/arrayobject.h>
-
 #include <math.h>
 #include <stdio.h>
 #include <complex.h>
@@ -60,14 +55,12 @@ void deflect_points(parametric_lens lens, double *p_in, int npoints, double *p_o
 /*----- Define the function for the deflection angle of the external shear----------------*/
 void external_shear(parametric_lens lens, double x, double y, double *ds, int want_deriv, double *deriv)
 {
-	double cs2,sn2;
-	double sx, sy;
+	double cs2,sn2,sx, sy;
 
-	// shear
 	sx = x - lens.x;
 	sy = y - lens.y;
-	cs2 = lens.cos_sa*lens.cos_sa - lens.sin_sa*lens.sin_sa; // cos(2*sa);
-	sn2 = 2*lens.sin_sa*lens.cos_sa;  // sin(2*sa);
+	cs2 = -lens.cos_sa*lens.cos_sa + lens.sin_sa*lens.sin_sa; // cos(2*sa);
+	sn2 = -2*lens.sin_sa*lens.cos_sa;  // sin(2*sa);
 	ds[0] += lens.ss*(cs2*sx+sn2*sy);
 	ds[1] += lens.ss*(sn2*sx-cs2*sy);
 
@@ -162,10 +155,31 @@ void deflect_PEMD_series(parametric_lens lens, double xx, double yy, double *d, 
 	double complex dalpha_db, dalpha_dt, dalpha_dq, dalpha_dxs, dalpha_dys;
 	double complex dalpha_dx, dalpha_dy, dalpha_dth;
 
+#if 0
+		// compute kappa_0 from the Einstein radius for shape = 3
+		// from Wolfgang Enzi et al 2020
+		Re = lenses.b;
+		q = lenses.f;
+		w = lenses.rc / Re;
+		gamma = 2*lenses.qh+1;
+		w2 = w*w;
+		w2p1q = w*w + 1/q;
+		pgam = (3-gamma)/2 ;
+		A = (1.0/2 * (4 - gamma)/(3 - gamma) * pow(q,1.0/2));
+		B = (pow(w2p1q, pgam) - pow(w2, pgam));
+		b = pow(Re, gamma - 1 ) / A / B;
+		b =  ( 1.5 - lenses.qh) * (b/(2.0*sqrt(lenses.f)));
+
+
+#endif
+
 	// Setup
-	b = lens.b;
+	// Parameterized the same way as in the old reconst code
+	// TODO: use the Einstein radius for lens.b!!!
 	t = 2*lens.qh; 
 	q = lens.f;
+	//b = lens.b;
+	b = pow(0.5*lens.b*pow(q,t-0.5)*(3.0-t)/(2.0-t),1.0/t);
 	crot = lens.cos_th - I*lens.sin_th; 
 	z = ((xx-lens.x) + I*(yy-lens.y)) * crot;
 	x = creal(z);

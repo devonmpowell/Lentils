@@ -1,9 +1,9 @@
 
-- Implement lens operators in correct units
-
 - Dirty beam convolution instead of explicit FCF
 
 - NUFFT still fails for non-square grids and/or odd grid dimensions... is it the pcenter hack???
+
+- Mask in convolution matrix
 
 - Joint modeling of multiple data sets!!!
 
@@ -12,8 +12,6 @@
 - dtype as part of Space superclass
 
 - Mask as part of VisibilitySpace
-
-- Test source inversion with radio data!
 
 - All TODOs in code
 
@@ -35,9 +33,9 @@
 
 - Use 2F1 series for all deflection computations
 
-- Regularization operators
+- Maximum edge length in lens plane tessellation
 
-- Rotating visibilities to center of image plane
+- Regularization operators
 
 - How is the visibility mask done?
 

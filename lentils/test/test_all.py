@@ -256,21 +256,30 @@ class SolverTests(TestCase):
 
     def test_cg_radio(self):
 
-        return
+        #image_space = ImageSpace(shape=(1024,1024), bounds=[(-1.15, 0.35,), (-0.65, 0.85)])
+        #uvdata = RadioDataset(f'{testpath}/data_radio_2d/input/j0751_small_snr1x.uvfits',
+                #image_space=image_space, image_mask=f'{testpath}/data_radio_2d/input/mask_1024_zoom.fits')
 
-        image_space = ImageSpace(shape=(1024,1024), bounds=[(-1.15, 0.35,), (-0.65, 0.85)])
-        uvdata = RadioDataset(f'{testpath}/data_radio_2d/input/j0751_small_snr1x.uvfits',
-                image_space=image_space, image_mask=f'{testpath}/data_radio_2d/input/mask_1024_zoom.fits')
+        ## Ground-truth lens model from mock data
+        #lensmodel = LensModel(b=0.402005, th=48.987322, f=0.796415, x=-0.445178, y=0.178450, 
+                #rc=1.0e-4, qh=0.504365, ss=0.070171, sa=75.522635, z=0.35)
 
-        # MAP lens model for J0751 PL only 
+
+        image_space = ImageSpace(shape=(1024,1024), bounds=[(-1.0, 0.2,), (-0.5, 0.7)])
+        uvdata = RadioDataset(f'{testpath}/data_radio_2d/new_mock/j0751_lwmp_nopos_nosub_0.000000_tiny.uvfits',
+                image_space=image_space, image_mask=f'{testpath}/data_radio_2d/new_mock/mask_connected_thresh5_pad3.fits')
+
+        # Ground-truth lens model from mock data
         lensmodel = LensModel(b=0.462437, th=19.162881, f=0.899243, x=-0.441519, y=0.175067, 
                 rc=0.0, qh=0.449087, ss=0.092515, sa=73.698888, z=0.35)
-        lensop = DelaunayLensOperator(image_space, lensmodel, z_src=3.2, ncasted=3, mask=uvdata.image_mask)
+
+
+        lensop = DelaunayLensOperator(image_space, lensmodel, z_src=3.2, ncasted=1, mask=uvdata.image_mask)
         src_space = lensop.space_right
         points = src_space.points
 
         # source prior
-        lams = 5.0e14
+        lams = 5.0e10
         reg_op = PriorCovarianceOperator(src_space, type='gradient', strength=lams)
 
         # Set up operators
@@ -341,7 +350,7 @@ class SolverTests(TestCase):
 
     def test_direct_radio(self):
 
-        #return
+        return
 
         image_space = ImageSpace(shape=(1024,1024), bounds=[(-1.15, 0.35,), (-0.65, 0.85)], 
                             mask=f'{testpath}/data_radio_2d/input/mask_1024_zoom.fits')
@@ -412,12 +421,12 @@ class SolverTests(TestCase):
 
     def test_cg(self):
 
-        return
+        #return
 
         # load image data 
         # it creats the data covariance and psf operators automatically
         imdata = OpticalDataset(f'{testpath}/data_optical_2d/input/data.fits',
-                noise=0.0304896, maskfits=f'{testpath}/data_optical_2d/input/mask.fits', 
+                noise=0.0304896, mask=f'{testpath}/data_optical_2d/input/mask.fits', 
                 psf=f'{testpath}/data_optical_2d/input/psf.fits', psf_support=21,
                 bounds=[(-0.72,0.72),(-0.67,0.67)])
         image_space = imdata.space 
@@ -426,21 +435,11 @@ class SolverTests(TestCase):
         plt.imshow((imdata.data*imdata.mask).T, extent=image_space._bounds.flatten(), **imargs)
         plt.show()
 
-
         # make a lens model
         lensmodel = LensModel() # default optical test for now
         lensop = DelaunayLensOperator(image_space, lensmodel, z_src=2.059, ncasted=3, mask=imdata.mask)
         src_space = lensop.space_right
         points = src_space.points
-
-
-        # make some mock data... 
-        testsrc = np.zeros(src_space.shape) 
-        cr = np.array([-0.03,0.0])
-        testsrc += 2.0*np.exp(-1.0/(2.0*0.05**2)*np.sum((points-cr)**2, axis=-1))
-        cr = np.array([0.03,-0.05])
-        testsrc += 2.0*np.exp(-1.0/(2.0*0.02**2)*np.sum((points-cr)**2, axis=-1))
-        mockdata = psfop * lensop * testsrc + np.random.normal(scale=imdata.sigma) 
 
         # source prior
         lams = 5.0e2
@@ -449,7 +448,7 @@ class SolverTests(TestCase):
         # Set up operators
         response = psfop * lensop
         lhs = response.T * covop * response + reg_op
-        rhs = response.T * covop * mockdata 
+        rhs = response.T * covop * imdata.data 
 
         # preconditioner
         # TODO: cholesky rather than LU?
@@ -469,14 +468,6 @@ class SolverTests(TestCase):
         print("Solution max =", np.max(x))
         plt.title('Solution')
         plt.show()
-
-
-        resid = x - testsrc
-        print('Source resid = ', np.sum(resid**2)**0.5 / np.sum(rhs**2)**0.5)
-        #plt.tripcolor(points[:,0],points[:,1], src_space.tris, resid, shading='gouraud')
-        #plt.title('Mock Resid')
-        #plt.show()
-
 
         resid = lhs*x-rhs
         print('CG resid = ', np.sum(resid**2)**0.5 / np.sum(rhs**2)**0.5)
