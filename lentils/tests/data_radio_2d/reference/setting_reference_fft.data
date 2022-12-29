@@ -1,0 +1,33 @@
+j0751_small_snr1x.uvfits
+mask_1024_zoom.fits
+NULL
+file noise_file_or_const_num
+0 adaptive_src_reg
+0 PSF_size
+2.000000 #_casted_pixels
+2 data_type
+0 fits_type
+0 shyp
+0 #_non-linear_optimizations
+20 #_linear_iterations
+1 type_solution
+1 plot_pot_correction
+1.000000 plot_scale
+0 nested
+.
+reference_fft
+3.200000 src_redshift
+1 2 src_regul_order
+1 0 pot_regul_order
+1 #_lenses
+0 sdt
+0 10 ccurve
+0 mmodal
+1 ceff
+100 nlive
+0 nclspar
+0 resume
+0.000000 efficiency
+0.000000 tolerence
+1 imp_sampling
+0 pedestal
