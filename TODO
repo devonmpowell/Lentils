@@ -1,13 +1,9 @@
 
 - Dirty beam convolution instead of explicit FCF
 
-- NUFFT still fails for non-square grids and/or odd grid dimensions... is it the pcenter hack???
-
 - Mask in convolution matrix
 
 - Joint modeling of multiple data sets!!!
-
-- Use Python FFTs
 
 - dtype as part of Space superclass
 
@@ -32,8 +28,6 @@
 - Get rid of space names...
 
 - Use 2F1 series for all deflection computations
-
-- Maximum edge length in lens plane tessellation
 
 - Regularization operators
 

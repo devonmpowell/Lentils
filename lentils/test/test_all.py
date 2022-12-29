@@ -22,11 +22,20 @@ from timeit import default_timer as timer
 # set tolerances for floating-point checks
 errtol = 1.0e-6 
 
+def max_relative_error(a, b, relative_to='max'):
+    norm = 1.0
+    if relative_to == 'element':
+        norm = np.abs(b)
+    elif relative_to == 'max':
+        norm = np.max(np.abs(b))
+    maxerr = np.max(np.abs((a-b)/norm))
+    #print("max err = %.5e" % maxerr)
+    return maxerr
+
 imargs = {'origin': 'lower', 'interpolation': 'nearest', 'cmap': plt.cm.Spectral}
 
-from os.path import dirname, realpath
-
 # path to this test directory
+from os.path import dirname, realpath
 testpath = dirname(realpath(__file__))
 
 
@@ -161,12 +170,10 @@ class NUFFTTests(TestCase):
         # make a fake uv coordinate set at different scales in units of du
         uv_per_scale = 4 
         all_uv = []
-        for scale in np.linspace(0.0,60.0,20):
+        for scale in np.linspace(0.0,55.0,20):
             all_uv.append([np.random.normal(scale=1e5*scale,size=(uv_per_scale,3))])
         all_uv = np.array(all_uv, dtype=np.float64).reshape((-1,3))
         uv_space = VisibilitySpace(name='RandomVisTest', channels=[0.5], uvcoords=all_uv)
-
-        # TODO: test for odd-sized and non-square grids!
         image_space = ImageSpace(shape=(256,256), bounds=[(-0.5,0.7),(-0.7,0.5)])
 
         # put some fake data through the pipeline
@@ -175,13 +182,13 @@ class NUFFTTests(TestCase):
         dft = DFTOperator(uv_space, image_space)
         nufftvec = nufft.T * vdata
         dftvec = dft.T * vdata
-        resid_max = np.max(np.abs(dftvec-nufftvec))/np.max(np.abs(dftvec))
+        resid_max = max_relative_error(dftvec, nufftvec)
         self.assertLess(resid_max, errtol) 
 
         # Test the forward operation as well
         nufftvis = nufft * dftvec
         dftvis = dft * dftvec
-        resid_max = np.max(np.abs(dftvis-nufftvis))/np.max(np.abs(dftvis))
+        resid_max = max_relative_error(dftvis, nufftvis)
         self.assertLess(resid_max, errtol) 
 
 
@@ -256,25 +263,21 @@ class SolverTests(TestCase):
 
     def test_cg_radio(self):
 
-        #image_space = ImageSpace(shape=(1024,1024), bounds=[(-1.15, 0.35,), (-0.65, 0.85)])
-        #uvdata = RadioDataset(f'{testpath}/data_radio_2d/input/j0751_small_snr1x.uvfits',
-                #image_space=image_space, image_mask=f'{testpath}/data_radio_2d/input/mask_1024_zoom.fits')
-
-        ## Ground-truth lens model from mock data
+        #image_space = ImageSpace(shape=(1024,1024), bounds=[(-1.15, 0.35,), (-0.65, 0.85)], 
+                #mask=f'{testpath}/data_radio_2d/input/mask_1024_zoom.fits')
+        #uvdata = RadioDataset(f'{testpath}/data_radio_2d/input/j0751_small_snr1x.uvfits', image_space=image_space)
         #lensmodel = LensModel(b=0.402005, th=48.987322, f=0.796415, x=-0.445178, y=0.178450, 
                 #rc=1.0e-4, qh=0.504365, ss=0.070171, sa=75.522635, z=0.35)
 
 
-        image_space = ImageSpace(shape=(1024,1024), bounds=[(-1.0, 0.2,), (-0.5, 0.7)])
-        uvdata = RadioDataset(f'{testpath}/data_radio_2d/new_mock/j0751_lwmp_nopos_nosub_0.000000_tiny.uvfits',
-                image_space=image_space, image_mask=f'{testpath}/data_radio_2d/new_mock/mask_connected_thresh5_pad3.fits')
-
-        # Ground-truth lens model from mock data
+        image_space = ImageSpace(shape=(1024,1024), bounds=[(-1.0, 0.2,), (-0.5, 0.7)], 
+                mask=f'{testpath}/data_radio_2d/new_mock/mask_connected_thresh5_pad3.fits')
+        uvdata = RadioDataset(f'{testpath}/data_radio_2d/new_mock/j0751_lwmp_nopos_nosub_0.000000_tiny.uvfits', image_space=image_space)
         lensmodel = LensModel(b=0.462437, th=19.162881, f=0.899243, x=-0.441519, y=0.175067, 
                 rc=0.0, qh=0.449087, ss=0.092515, sa=73.698888, z=0.35)
 
 
-        lensop = DelaunayLensOperator(image_space, lensmodel, z_src=3.2, ncasted=1, mask=uvdata.image_mask)
+        lensop = DelaunayLensOperator(image_space, lensmodel, z_src=3.2, ncasted=6)
         src_space = lensop.space_right
         points = src_space.points
 
@@ -294,56 +297,40 @@ class SolverTests(TestCase):
             return np.sum(np.log(dcmp.U.diagonal().astype(np.complex128))) + np.sum(np.log(dcmp.L.diagonal().astype(np.complex128)))
         print("Logdet (PC) =", logdet(lu))
 
-        # solve
-        #i = 0
-        def lhs_fun(vec):
-            #global i
-            #print("Apply LHS", i)
-
-            print(np.min(vec), np.max(vec))
-            plt.tripcolor(points[:,0],points[:,1], src_space.tris, vec, shading='gouraud')
-            plt.title('Iter')
-            plt.show()
-            #i += 1
-            return lhs.apply(vec)
-
-
+        # Run CG solve 
         lhs_op = linalg.LinearOperator((src_space.size,src_space.size), matvec=lhs.apply)
-        #lhs_op = linalg.LinearOperator((src_space.size,src_space.size), matvec=lhs_fun)
         pc = linalg.LinearOperator((src_space.size, src_space.size), lu.solve)
-        x, info = linalg.cg(lhs_op, rhs, tol=1.0e-10, atol=1.0e-14, M=pc)
+        sol, info = linalg.cg(lhs_op, rhs, tol=1.0e-10, atol=1.0e-14, M=pc)
 
+        resid_max = np.max(np.abs(lhs*sol-rhs))/np.max(np.abs(rhs))
+        self.assertLess(resid_max, errtol) 
+        print('CG resid = ', resid_max) 
 
-        plt.tripcolor(points[:,0],points[:,1], src_space.tris, x, shading='gouraud')
-        print("Solution max =", np.max(x))
-        plt.title('Solution')
+        # check against DFT computation
+        dft = DFTOperator(uvdata.space, image_space)
+        rhs = lensop.T * dft.T * uvdata.covariance_operator * uvdata.data 
+
+        # TODO: concatenating explicit mats automatically
+        response = dft._mat * lensop._mat
+        lhs = response.T * uvdata.covariance_operator._mat * response + reg_op._mat
+
+        lu = linalg.splu(lhs)
+        print("Logdet (PC) =", logdet(lu))
+        sol_dft = lu.solve(rhs)
+
+        plt.tripcolor(points[:,0],points[:,1], src_space.tris, sol_dft, shading='gouraud')
+        print("Solution max =", np.max(sol_dft))
+        plt.title('Solution (direct)')
         plt.show()
 
+        resid = sol - sol_dft 
+        resid_max = np.max(np.abs(resid))/np.max(np.abs(sol_dft))
+        self.assertLess(resid_max, errtol) 
+        print('NUFFT vs DFT resid = ', resid_max) 
 
-        resid = x - testsrc
-        print('Source resid = ', np.sum(resid**2)**0.5 / np.sum(rhs**2)**0.5)
-        #plt.tripcolor(points[:,0],points[:,1], src_space.tris, resid, shading='gouraud')
-        #plt.title('Mock Resid')
-        #plt.show()
-
-
-        resid = lhs*x-rhs
-        print('CG resid = ', np.sum(resid**2)**0.5 / np.sum(rhs**2)**0.5)
-        #plt.tripcolor(points[:,0],points[:,1], src_space.tris, resid, shading='gouraud')
-        #plt.title('CG Resid')
-        #plt.show()
-
-        # Direct solve of the full system
-        # TODO: lhs._mat !
-        lu = linalg.splu(reg_op._mat + lensop._mat.T @ psfop._mat.T @ covop._mat @ psfop._mat @ lensop._mat)
-        print("Logdet (direct) =", logdet(lu))
-
-        # solve
-        x = lu.solve(rhs)
-
-        plt.tripcolor(points[:,0],points[:,1], src_space.tris, x, shading='gouraud')
-        print("Solution max =", np.max(x))
-        plt.title('Solution (direct)')
+        plt.tripcolor(points[:,0],points[:,1], src_space.tris, sol, shading='gouraud')
+        print("Solution max =", np.max(sol))
+        plt.title('Solution')
         plt.show()
 
 
@@ -352,20 +339,30 @@ class SolverTests(TestCase):
 
         return
 
-        image_space = ImageSpace(shape=(1024,1024), bounds=[(-1.15, 0.35,), (-0.65, 0.85)], 
-                            mask=f'{testpath}/data_radio_2d/input/mask_1024_zoom.fits')
+        image_space = ImageSpace(shape=(1024,1024), bounds=[(-1.15, 0.35,), (-0.65, 0.85)])
         uvdata = RadioDataset(f'{testpath}/data_radio_2d/input/j0751_small_snr1x.uvfits',
-                image_space=image_space, image_mask=f'{testpath}/data_radio_2d/input/mask_1024_zoom.fits')
+                image_space=image_space, image_mask=f'{testpath}/data_radio_2d/new_mock/mask_connected_thresh5_pad3.fits')
 
         # MAP lens model for J0751 PL only 
         lensmodel = LensModel(b=0.462437, th=19.162881, f=0.899243, x=-0.441519, y=0.175067, 
                 rc=0.0, qh=0.449087, ss=0.092515, sa=73.698888, z=0.35)
+
+
+
+        #image_space = ImageSpace(shape=(1024,1024), bounds=[(-1.0, 0.2,), (-0.5, 0.7)],
+                #mask=f'{testpath}/data_radio_2d/new_mock/mask_connected_thresh5_pad3.fits')
+        #uvdata = RadioDataset(f'{testpath}/data_radio_2d/new_mock/j0751_lwmp_nopos_nosub_0.000000_tiny.uvfits',
+                #image_space=image_space) #, image_mask=f'{testpath}/data_radio_2d/new_mock/mask_connected_thresh5_pad3.fits')
+
+        # Ground-truth lens model from mock data
+        #lensmodel = LensModel(b=0.462437, th=19.162881, f=0.899243, x=-0.441519, y=0.175067, 
+                #rc=0.0, qh=0.449087, ss=0.092515, sa=73.698888, z=0.35)
         lensop = DelaunayLensOperator(image_space, lensmodel, z_src=3.2, ncasted=3, mask=uvdata.image_mask)
         src_space = lensop.space_right
         points = src_space.points
 
         # source prior
-        lams = 5.0e14
+        lams = 5.0e10
         reg_op = PriorCovarianceOperator(src_space, type='gradient', strength=lams)
 
         # check against DFT computation
@@ -405,7 +402,7 @@ class SolverTests(TestCase):
 
         # Direct solve of the full system
         # TODO: lhs._mat !
-        lu = linalg.splu(reg_op._mat + lensop._mat.T @ psfop._mat.T @ covop._mat @ psfop._mat @ lensop._mat)
+        lu = linalg.splu(reg_op._mat + lensop._mat.T @ dft._mat.T @ covop._mat @ dft._mat @ lensop._mat)
         print("Logdet (direct) =", logdet(lu))
 
         # solve
@@ -421,7 +418,7 @@ class SolverTests(TestCase):
 
     def test_cg(self):
 
-        #return
+        return
 
         # load image data 
         # it creats the data covariance and psf operators automatically

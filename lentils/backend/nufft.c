@@ -2,8 +2,8 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
-#include <fftw3.h>
 #include <omp.h>
+#include "gsl/gsl_sf_bessel.h"
 #include "common.h"
 #include "nufft.h"
 
@@ -35,32 +35,6 @@ double kb_w(double argx, double argy, double beta, double wsup) {
 
 double kb_optimal_beta(double padfac, double wsup) {
 	return PI*sqrt(((2.0*wsup)/padfac)*((2.0*wsup)/padfac)*(padfac-0.5)*(padfac-0.5)-0.8);
-}
-
-
-void fft2d(nufft_pars *nufft, double *data_x, double *data_k, int direction) {
-
-
-	// Execute FFT
-	fftw_plan plan = NULL;
-	fftw_init_threads();
-	fftw_plan_with_nthreads(omp_get_max_threads()/2);
-	if(direction == FORWARD) {
-		plan = fftw_plan_dft_r2c_2d(nufft->nx_pad, nufft->ny_pad, data_x, (fftw_complex*)data_k, FFTW_FORWARD|FFTW_ESTIMATE);
-	}
-	else if(direction == ADJOINT) {
-		plan = fftw_plan_dft_c2r_2d(nufft->nx_pad, nufft->ny_pad, (fftw_complex*)data_k, data_x, FFTW_BACKWARD|FFTW_ESTIMATE);
-	}
-	if(plan) {
-		fftw_execute(plan);
-		fftw_destroy_plan(plan);
-	}
-	else {
-		// TODO: errors
-	}
-
-	fftw_cleanup_threads();
-
 }
 
 
@@ -224,7 +198,7 @@ void init_nufft(nufft_pars *nufft, int nx, int ny, double xmin, double ymin, dou
 	nufft->padx = floor(((pad_factor-1.0)*nx+1)/2); // round up in dividing by 2 for odd-numbered grids or weird pad factors 
 	nufft->pady = floor(((pad_factor-1.0)*ny+1)/2);
 	nufft->nx_pad = nx+2*nufft->padx;
-	nufft->ny_pad = nx+2*nufft->pady;
+	nufft->ny_pad = ny+2*nufft->pady;
 	nufft->half_ny_pad = nufft->ny_pad/2+1; 
 	nufft->pad_factor = pad_factor;
 
@@ -307,8 +281,8 @@ void grid_cpu(nufft_pars *nufft, double *vis, double *grid, int direction) {
 				while(i_v >= nufft->ny_pad) i_v -= nufft->ny_pad;
 
 				// fold since we are using the r2c transform
-				if(i_v > nufft->half_ny_pad) {
-					i_u = (nufft->nx_pad - i_u) % nufft->nx_pad;
+				if(i_v >= nufft->half_ny_pad) {
+					i_u = (nufft->nx_pad - i_u) % nufft->nx_pad; // modulo to preserve i_u = 0
 					i_v = nufft->ny_pad - i_v; 
 					cwgt_im *= -1;
 				} 
@@ -327,6 +301,7 @@ void grid_cpu(nufft_pars *nufft, double *vis, double *grid, int direction) {
 				else if(direction == ADJOINT) {
 					if(i_v == 0) {
 						// Needed for the r2c transform, only in the adjoint direction
+						// TODO: why??
 						cwgt_re *= 2;
 						cwgt_im *= 2;
 					}

@@ -103,7 +103,8 @@ class FourierSpace(Space):
 
         if not isinstance(image_space, ImageSpace): 
             raise TypeError("image_space must be of type ImageSpace")
-        self._shape = image_space.shape
+        #self._shape = image_space.shape
+        self._shape = (image_space.shape[0], image_space.shape[1]//2+1)
         self._axis_names = image_space._axis_names
         self._axis_names[-2:] = ['u','v']
         self._ndim = len(self._shape)
@@ -180,10 +181,9 @@ class ImageSpace(Space):
 
 class DelaunaySpace(Space):
 
-    def __init__(self, points, name='DelaunaySpace', channels=[0]):
+    def __init__(self, points, channels=[0]):
 
         super().__init__()
-        self.name = name
         self.dtype = np.float64
         self._tris = Delaunay(points)
         self.edge = np.unique(self._tris.convex_hull.flatten())

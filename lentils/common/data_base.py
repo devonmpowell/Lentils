@@ -66,7 +66,7 @@ class Dataset:
 
 class RadioDataset(Dataset):
 
-    def __init__(self, file, image_space=None, image_mask=None, combine_stokes=True, mfs=True):
+    def __init__(self, file, image_space=None, combine_stokes=True, mfs=True):
 
         uvspace, data, sigma, mask = _load_uvfits(file, combine_stokes)
 
@@ -78,12 +78,6 @@ class RadioDataset(Dataset):
                 raise TypeError("image_space must be of type ImageSpace.")
             self.image_space = image_space
             self.nufft_operator = NUFFTOperator(self.space, self.image_space)
-
-        # load mask if there is one
-        if image_mask is not None:
-            with fits.open(image_mask) as f:
-                self.image_mask = f['PRIMARY'].data[:,:].T.copy()
-
 
     @property
     def blurring_operator(self):

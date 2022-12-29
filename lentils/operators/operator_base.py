@@ -7,7 +7,7 @@ Note: This skeleton file can be safely removed if not needed!
 
 import numpy as np
 from astropy.convolution import convolve, convolve_fft
-from scipy import sparse
+from scipy import sparse, fft
 from copy import copy
 import matplotlib.pyplot as plt
 from astropy.io import fits
@@ -91,13 +91,16 @@ class Operator:
     def __add__(self, other):
         return CompositeOperatorSum([self, other])
 
+    def cast_output(self, vec):
+        return np.ascontiguousarray(vec).view(self.space_left.dtype).reshape(self.space_left.shape)
+
     def apply(self, other):
         if isinstance(other, np.ndarray):
             if not broadcastable(self.space_right, other): 
                 raise ValueError(f"Incompatible shapes! {self.space_right.shape}, {other.shape}")
             try: 
                 # TODO: Broadcasting! Slice the arrays properly rather than just assume flatten works
-                return self._mat.dot(other.view(np.float64).flatten()).view(self.space_left.dtype).reshape(self.space_left.shape)
+                return self.cast_output(self._mat.dot(other.view(np.float64).flatten()))
             except AttributeError:
                 return self._matrixfree_forward(other)
         elif isinstance(other, Operator):
@@ -330,19 +333,16 @@ class FFTOperator(Operator):
         if not isinstance(image_space, ImageSpace): 
             raise TypeError("image_space must be of type ImageSpace")
         space_left = FourierSpace(image_space, nufft)
-        self._cpars = nufft._cpars
 
         # finish up and pass along supers
         super().__init__(space_left, image_space)
 
     def _matrixfree_forward(self, vec):
-        out = self.space_left.new_vector()
-        libnufft.fft2d(self._cpars, vec, out, 0)
+        out = self.cast_output(fft.rfft2(vec, s=self.space_right.shape, norm='backward'))
         return out
 
     def _matrixfree_transpose(self, vec):
-        out = self.space_left.new_vector()
-        libnufft.fft2d(self._cpars, out, vec, 1)
+        out = self.cast_output(fft.irfft2(vec, s=self.space_left.shape, norm='forward'))
         return out
 
 
@@ -538,24 +538,15 @@ class ManifoldLensOperator(LensOperator):
 # Vegetti and Koopmans delaunay tessellation
 class DelaunayLensOperator(LensOperator):
 
-    def __init__(self, image_space, lensmodel, z_src, ncasted=1, mask=None, **superargs):
+    def __init__(self, image_space, lensmodel, z_src, ncasted=1, **superargs):
 
         if not isinstance(image_space, ImageSpace):
             raise TypeError("image_space must be ImageSpace")
         if not isinstance(lensmodel, LensModel):
             raise TypeError("lensmodel must be LensModel")
 
-        # load the image-plane mask for ray casting
-        # this is different from the data mask
-        if mask is not None:
-            if mask.shape != image_space.shape:
-                raise ValueError("mask shape must match the image space")
-            image_mask = mask.astype(np.bool_)
-        else:
-            image_mask = np.ones(image_space.shape, dtype=np.bool_)
-        self.image_mask = image_mask
-
         # make image-plane masks containing "casted" and "uncasted" points
+        image_mask = image_space.mask
         image_points = image_space.points
         casted_mask = np.zeros_like(image_mask)
         uncasted_mask = np.ones_like(image_mask)

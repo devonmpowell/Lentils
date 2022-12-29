@@ -1,13 +1,6 @@
 #ifndef _NUFFT_H_
 #define _NUFFT_H_
 
-#include "gsl/gsl_sf_bessel.h"
-#include "nufft.h"
-
-// Options for gridding/degridding direction
-//#define VIS_TO_GRID 0
-//#define GRID_TO_VIS 1
-
 #define FORWARD 0 
 #define ADJOINT 1 
 
