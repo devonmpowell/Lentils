@@ -18,7 +18,7 @@ class NUFFTTests(TestCase):
             all_uv.append([np.random.normal(scale=1e5*scale,size=(uv_per_scale,3))])
         all_uv = np.array(all_uv, dtype=np.float64).reshape((-1,3))
         uv_space = VisibilitySpace(name='RandomVisTest', channels=[0.5], uvcoords=all_uv)
-        image_space = ImageSpace(shape=(256,256), bounds=[(-0.5,0.7),(-0.7,0.5)])
+        image_space = ImageSpace(shape=(236,257), bounds=[(-0.5,0.7),(-0.7,0.5)])
 
         # put some fake data through the pipeline
         vdata = np.random.normal(size=(uv_space.shape[0],2)).view(np.complex128)
@@ -33,6 +33,36 @@ class NUFFTTests(TestCase):
         nufftvis = nufft * dftvec
         dftvis = dft * dftvec
         err_max = max_relative_error(dftvis, nufftvis)
+        self.assertLess(err_max, errtol) 
+
+
+    def test_blurred_covariance(self):
+
+        # TODO: test this for non-square and odd grids as well.
+
+        # load data and a model image
+        image_space = ImageSpace(shape=(1024,1024), bounds=[(-1.15, 0.35,), (-0.65, 0.85)], 
+                mask=f'{testpath}/data_radio_2d/input/mask_1024_zoom.fits')
+        uvdata = RadioDataset(f'{testpath}/data_radio_2d/input/j0751_small_snr1x.uvfits',
+                image_space=image_space)
+        with fits.open(f'{testpath}/data_radio_2d/reference/best_Ls_reference_dft.fits') as f:
+            imdata = np.ascontiguousarray(f['PRIMARY'].data.T[:,:,0].astype(np.float64))
+
+        # do the blurred covariance three different ways
+        nufft = uvdata.nufft_operator
+        cov = uvdata.covariance_operator
+        bcb = uvdata.blurred_covariance_operator 
+        dft = DFTOperator(uvdata.space, image_space)
+        result_explicit = nufft.T * cov * nufft * imdata
+        result_convolved = bcb * imdata
+        result_dft = dft.T * cov * dft * imdata
+
+        # check results against each other
+        err_max = max_relative_error(result_convolved, result_explicit)
+        self.assertLess(err_max, errtol) 
+        err_max = max_relative_error(result_convolved*image_space.mask, result_dft)
+        self.assertLess(err_max, errtol) 
+        err_max = max_relative_error(result_explicit*image_space.mask, result_dft)
         self.assertLess(err_max, errtol) 
 
 

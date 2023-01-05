@@ -9,7 +9,7 @@ import numpy as np
 import astropy.io.fits as fits 
 import astropy.constants as const
 from scipy.spatial import Delaunay
-from lentils.operators import DiagonalOperator, ConvolutionOperator, NUFFTOperator
+from lentils.operators import DiagonalOperator, ConvolutionOperator, NUFFTOperator, CompositeOperatorProduct
 from lentils.common import ImageSpace, VisibilitySpace 
 from .data_util import _load_uvfits
 
@@ -39,7 +39,7 @@ class Dataset:
         try:
             return self._covariance_op
         except AttributeError:
-            diag = np.zeros_like(self.sigma)
+            diag = np.zeros_like(self.sigma, dtype=self.space.dtype)
             diag[self.mask] = self.sigma[self.mask]**-2 
             self._covariance_op = DiagonalOperator(self.space, diag)
             return self._covariance_op
@@ -88,8 +88,14 @@ class RadioDataset(Dataset):
         try:
             return self._fcf
         except AttributeError:
-            #self._fcf = ConvolutionOperator(self.image_space, kerneldata=self.dirty_beam, fft=True)
-            self._fcf = self.nufft_operator.T * self.covariance_operator * self.nufft_operator
+            fft = self.nufft_operator.fft
+            zpad = self.nufft_operator.zpad
+            zpfft = fft*zpad
+            db = self.dirty_beam
+            db = np.roll(db,[db.shape[0]//2,db.shape[1]//2],axis=[0,1])
+            dbfft = fft*db/np.product(db.shape)
+            dbop = DiagonalOperator(fft.space_left, dbfft)
+            self._fcf = CompositeOperatorProduct([zpfft.T, dbop, zpfft])
             return self._fcf
 
     @property
@@ -105,13 +111,19 @@ class RadioDataset(Dataset):
         try:
             return self._dirty_beam
         except AttributeError:
+            # TODO: use NUFFT padded space dimensions
+            #padded = self.nufft_operator.padded_space
+            #nx = padded._shape[0]
+            #ny = padded._shape[1]
+            #rx = 0.5*(padded._bounds[1,0]-padded._bounds[0,0]) 
+            #ry = 0.5*(padded._bounds[1,1]-padded._bounds[0,1]) 
             nx = 2*self.image_space._shape[0]
             ny = 2*self.image_space._shape[1]
             rx = self.image_space._dx[0]*self.image_space._shape[0]
             ry = self.image_space._dx[1]*self.image_space._shape[1]
             self._space_beam = ImageSpace(shape=(nx,ny), bounds=[(-rx,rx), (-ry,ry)])
             self._nufft_beam = NUFFTOperator(self.space, self._space_beam)
-            ones = self.space.new_vector(1.0) 
+            ones = self.space.new_vector(1.0+0.0j) 
             self._dirty_beam = self._nufft_beam.T * self.covariance_operator * ones
             return self._dirty_beam
 

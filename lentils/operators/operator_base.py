@@ -71,10 +71,14 @@ class Operator:
 
     @property
     def matrix(self):        
-        try: 
+        if self.has_matrix:
             return self._mat
-        except AttributeError:
+        else:
             return None
+
+    @property
+    def has_matrix(self):        
+        return hasattr(self, '_mat')
 
     @property
     def T(self):
@@ -91,18 +95,19 @@ class Operator:
     def __add__(self, other):
         return CompositeOperatorSum([self, other])
 
-    def cast_output(self, vec):
+    def _cast_output(self, vec):
         return np.ascontiguousarray(vec).view(self.space_left.dtype).reshape(self.space_left.shape)
 
     def apply(self, other):
         if isinstance(other, np.ndarray):
             if not broadcastable(self.space_right, other): 
                 raise ValueError(f"Incompatible shapes! {self.space_right.shape}, {other.shape}")
-            try: 
+            if self.has_matrix:
                 # TODO: Broadcasting! Slice the arrays properly rather than just assume flatten works
-                return self.cast_output(self._mat.dot(other.view(np.float64).flatten()))
-            except AttributeError:
-                return self._matrixfree_forward(other)
+                out = self._mat.dot(other.view(self._mat.dtype).flatten())
+            else:
+                out = self._matrixfree_forward(other)
+            return self._cast_output(out)
         elif isinstance(other, Operator):
             return CompositeOperatorProduct([self, other])
         raise TypeError("Operator.apply() can only be used on numpy.ndarray or Operator")
@@ -276,25 +281,9 @@ class DiagonalOperator(Operator):
 
         # TODO: generalize this to higher than space.shape 
         # TODO: check data and space compatibility
-
-        # covariance matrix entries must be real
-        self._data = data.astype(np.float64) 
-        self._shape = self._data.shape
-
-        # if the data are complex, expand each entry
-        # to multiply the real and complex parts separately
-        matdim = np.product(self._shape)
-        matdata = self._data.flatten()
-        if space.dtype == np.float64:
-            self._mat = sparse.spdiags(matdata, 0, matdim, matdim)
-        elif space.dtype == np.complex128:
-            cmatdata = np.zeros(2*matdim)
-            cmatdata[0::2] = matdata
-            cmatdata[1::2] = matdata
-            self._mat = sparse.spdiags(cmatdata, 0, 2*matdim, 2*matdim)
-        else:
-            raise TypeError("Space data type must be float64 or complex128.")
-
+        self._data = data
+        matdim = np.product(space.shape)
+        self._mat = sparse.spdiags(self._data.flatten(), 0, matdim, matdim)
         super().__init__(space, space)
 
 
@@ -338,11 +327,11 @@ class FFTOperator(Operator):
         super().__init__(space_left, image_space)
 
     def _matrixfree_forward(self, vec):
-        out = self.cast_output(fft.rfft2(vec, s=self.space_right.shape, norm='backward'))
+        out = self._cast_output(fft.rfft2(vec, s=self.space_right.shape, norm='backward'))
         return out
 
     def _matrixfree_transpose(self, vec):
-        out = self.cast_output(fft.irfft2(vec, s=self.space_left.shape, norm='forward'))
+        out = self._cast_output(fft.irfft2(vec, s=self.space_left.shape, norm='forward'))
         return out
 
 
@@ -402,7 +391,7 @@ class NUFFTOperator(CompositeOperatorProduct):
         # make the intermediate spaces
         # the following operator will need them
         self.image_space = image_space
-        ######## TODO: move this into zero-pad operator
+        ######## TODO: move this into zero-pad operator, use cpars
         imshape_list = [n for n in self.image_space._shape]
         padshape_list = imshape_list
         padshape_list[-2:] = [self._cpars.nx_pad, self._cpars.ny_pad]

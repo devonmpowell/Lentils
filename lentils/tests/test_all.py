@@ -1,7 +1,10 @@
 import unittest
 from unittest import TestCase, main
+import numpy as np
 
-from .test_utils import testpath, errtol, max_relative_error 
+from .test_utils import testpath, errtol, max_relative_error
+from .test_utils import imargs
+
 
 
 from lentils.common import * 
@@ -143,6 +146,8 @@ class LensTests(TestCase):
 
 
 class SolverTests(TestCase):
+
+    # TODO: check these also against reference solutions?
 
     def test_cg_radio(self):
 
@@ -322,7 +327,7 @@ class SolverTests(TestCase):
         points = src_space.points
 
         # source prior
-        lams = 5.0e2
+        lams = 1.0e3 
         reg_op = PriorCovarianceOperator(src_space, type='gradient', strength=lams)
 
         # Set up operators
