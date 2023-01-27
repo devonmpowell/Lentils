@@ -229,3 +229,43 @@ void rasterize_triangle(double *verts_in, double *deriv_in, int nx, int ny, doub
 }
 
 
+
+void manifold_lens_matrix_csr(int im_nx, int im_ny, int ncast, char *mask, 
+		double *uncasted_points, int *uncasted_tri_inds, double *casted_points, int *all_tri_inds, 
+		int *row_inds, int *cols, double *vals) {
+
+	int row, i, iim, jim, v, cast_idx, uncast_idx, tind, p[3];
+	double atmp, stmp[2], pos_tmp[6], weights[3];
+	for(iim = 0, i = 0, row = 0, cast_idx = 0, uncast_idx = 0; iim < im_nx; ++iim)
+	for(jim = 0; jim < im_ny; ++jim, ++row) {
+		row_inds[row] = i;
+		if(!mask[row]) continue;
+		if(iim%ncast || jim%ncast) {
+			// uncasted points
+			stmp[0] = uncasted_points[2*uncast_idx+0];
+			stmp[1] = uncasted_points[2*uncast_idx+1];
+			tind = uncasted_tri_inds[uncast_idx++];
+			if(tind < 0) continue;
+			for(v = 0; v < 3; ++v) {
+				p[v] = all_tri_inds[3*tind+v];
+				pos_tmp[2*v+0] = casted_points[2*p[v]+0];
+				pos_tmp[2*v+1] = casted_points[2*p[v]+1];
+			
+			}
+			triangle_geometry(stmp, pos_tmp, weights, &atmp);
+			for(v = 0; v < 3; ++v) {
+				vals[i] = weights[v]; 
+				cols[i++] = p[v];
+			}
+		}
+		else {
+			// casted points
+			vals[i] = 1.0; 
+			cols[i++] = cast_idx++;
+		}
+	}
+	row_inds[row] = i;
+}
+
+
+

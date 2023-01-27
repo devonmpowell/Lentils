@@ -1,6 +1,4 @@
 
-- Dirty beam convolution instead of explicit FCF
-
 - Mask in convolution matrix
 
 - Joint modeling of multiple data sets!!!
@@ -31,8 +29,6 @@
 
 - Regularization operators
 
-- How is the visibility mask done?
-
 - Solver framework
 
-- Make the covariance weight application slicker?
+- scikit-sparse for Cholesky and solvers

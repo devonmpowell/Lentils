@@ -277,12 +277,24 @@ class GridOperator(Operator):
 
 class DiagonalOperator(Operator):
 
-    def __init__(self, space, data, **superargs):
+    def __init__(self, space, data, options=None, **superargs):
 
         # TODO: generalize this to higher than space.shape 
         # TODO: check data and space compatibility
-        self._data = data
-        matdim = np.product(space.shape)
+        if options == None:
+            self._data = data
+            matdim = np.product(space.shape)
+        elif options == 'r2c':
+            # makes a real matrix that represents complex entries
+            # TODO: make this handle the complex part as well
+            flatreal = data.flatten().real
+            matdim = 2*flatreal.size
+            self._data = np.zeros(matdim, dtype=np.float64)
+            self._data[0::2] = flatreal
+            self._data[1::2] = flatreal
+        else:
+            raise ValueError("options should be either None or r2c")
+
         self._mat = sparse.spdiags(self._data.flatten(), 0, matdim, matdim)
         super().__init__(space, space)
 
@@ -466,7 +478,7 @@ class LensOperator(Operator):
 
 class ManifoldLensOperator(LensOperator):
 
-    def __init__(self, image_space, source_space, lensmodel, z_src, ncasted=1, mask=None, **superargs):
+    def __init__(self, image_space, source_space, lensmodel, z_src, ncasted=1, **superargs):
 
         if not isinstance(image_space, ImageSpace):
             raise TypeError("image_space must be ImageSpace")
@@ -475,16 +487,17 @@ class ManifoldLensOperator(LensOperator):
         if not isinstance(lensmodel, LensModel):
             raise TypeError("lensmodel must be LensModel")
 
-        # load the image-plane mask for ray casting
-        # this is different fromthe data mask
-        if mask is not None:
-            if mask.shape != image_space.shape:
-                raise ValueError("mask shape must match the image space")
-            image_mask = mask.astype(np.bool_)
-        else:
-            image_mask = np.ones(image_space.shape, dtype=np.bool_)
-
-        print("Made the manifold lens op")
+        # make the matrix
+        num_vals = 50*num_rows # a conservative guess 
+        row_inds = np.zeros(num_rows+1, dtype=np.int32) 
+        cols = np.zeros(num_vals, dtype=np.int32) 
+        vals = np.zeros(num_vals, dtype=np.float64) 
+        libtriangles.manifold_lens_matrix_csr(
+            image_space.shape[0], image_space.shape[1], ncasted, 
+            image_mask, self._uncasted_points, uncasted_tri_inds, 
+            source_space.points, source_space._tris.simplices,
+            row_inds, cols, vals)
+        self._mat = sparse.csr_matrix((vals,cols,row_inds), shape=(image_space.size,source_space.size))
 
         # finish up and pass along supers
         super().__init__(image_space, source_space, lensmodel)

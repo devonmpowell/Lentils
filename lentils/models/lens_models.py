@@ -22,10 +22,8 @@ from lentils.backend import libdeflect, c_lensmodel, c_null_p
 # TODO: this needs to be split into more general classes
 class LensModel:
 
-    #def __init__(self, name='', description='', b=0.46, th=-16.0, f=0.80, x=-0.04, 
-            #y=-0.13, rc=1.0e-5, qh=0.51, ss=-0.05, sa=9.0, z=0.88):
-    def __init__(self, name='', description='', b=0.461902, th=-15.794212, f=0.804914, x=-0.038396, 
-            y=-0.130468, rc=0.000571, qh=0.506730, ss=-0.047924, sa=9.135239, z=0.881000):
+    def __init__(self, name='', description='', b=0.463544, th=-14.278754, f=0.799362, x=-0.046847, 
+            y=-0.105357, rc=0.000571, qh=0.506730, ss=-0.046500, sa=7.921300, z=0.881000):
 
         self.name = name
         self.description = description
@@ -55,7 +53,8 @@ class LensModel:
         self._c_lensmodel.d_ls = d_ls.value; 
         #sigma_c = (sigma_c*(d_l*d_l)).to('10^10 M_sun / arcsec^2')
         sigma_c = (sigma_c).to('10^10 M_sun / kpc^2')
-        #print("sigma_c =", sigma_c)
+        print("sigma_c =", sigma_c)
+        print("d_l =", d_l)
         self._c_lensmodel.sigma_c = sigma_c.value 
 
 

@@ -99,6 +99,16 @@ class RadioDataset(Dataset):
             return self._fcf
 
     @property
+    def covariance_operator_dft(self):
+        try:
+            return self._covariance_op_dft
+        except AttributeError:
+            diag = np.zeros_like(self.sigma, dtype=self.space.dtype)
+            diag[self.mask] = self.sigma[self.mask]**-2 
+            self._covariance_op_dft = DiagonalOperator(self.space, diag, options='r2c')
+            return self._covariance_op_dft
+
+    @property
     def dirty_image(self):
         try:
             return self._dirty_image

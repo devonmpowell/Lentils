@@ -27,6 +27,20 @@ typedef struct {
 
 
 
+typedef struct {
+
+	int type;
+	double z_l;
+	double z_s, sigma_c;
+	double fpars[16];
+	double aux[16];
+	int ipars[8];
+
+} generic_lens;
+
+
+
+
 
 
 
