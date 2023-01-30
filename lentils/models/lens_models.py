@@ -4,17 +4,9 @@
 """
 
 import numpy as np
-import astropy.io.fits as fits 
-import astropy.constants as const 
-from ctypes import c_int, c_double, POINTER, Structure, cdll
-import ctypes as cc
-import glob
-import os
-
 import astropy.cosmology as cosmo
 import astropy.units as units
-_cosmology = cosmo.Planck15
-
+import astropy.constants as const 
 from lentils.backend import libdeflect, generic_mass_model_ctype, c_null_p
 
 

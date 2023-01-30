@@ -32,3 +32,5 @@
 - scikit-sparse for Cholesky and solvers
 
 - Duck typing everywhere... quit typechecking function args!
+
+- Clean up dependencies in setup.py
