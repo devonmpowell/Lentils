@@ -23,17 +23,13 @@ c_null_p = np.zeros(0) # a hack, c_double_p will not accept 'None' as 'NULL'
 # deflect.c: lens model deflection angles
 ############################################################
 
-class c_lensmodel(Structure):
-    _fields_ = [('b', c_double), ('th', c_double), ('f', c_double), 
-           ('x', c_double), ('y', c_double), ('rc', c_double), 
-           ('qh', c_double), ('ss', c_double), ('sa', c_double), 
-           ('z', c_double), ('d_l', c_double), ('d_s', c_double), 
-           ('d_ls', c_double), ('sigma_c', c_double),
-           ('sin_th', c_double), ('cos_th', c_double), ('sin_sa', c_double), ('cos_sa', c_double),]
+generic_mass_model_ctype = np.dtype([('type','u8'),('z_l','f8'),('z_s','f8'),('d_l','f8'),('d_s','f8'),('d_ls','f8'),
+                                    ('sigma_c','f8'),('beta','f8'),('fpars','f8',32),('flags','b',32)])
+c_lensmodel_p = ctypeslib.ndpointer(dtype=generic_mass_model_ctype, flags='C_CONTIGUOUS')
 
 libdeflect = ctypeslib.load_library('deflect', modulepath)
 libdeflect.deflect_points.restype = None
-libdeflect.deflect_points.argtypes = [c_lensmodel, c_double_p,c_int,c_double_p,c_int,c_double_p]
+libdeflect.deflect_points.argtypes = [c_lensmodel_p, c_int, c_double_p, c_int,c_double_p,c_int,c_double_p]
 
 
 ############################################################

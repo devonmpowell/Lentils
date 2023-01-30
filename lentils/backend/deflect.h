@@ -2,41 +2,17 @@
 #define _DEFLECT_H_
 
 
-
-typedef struct {
-
-	// parameters
-	double b;
-	double th;
-	double f;
-	double x, y;
-	double rc;
-	double qh;
-	double ss;
-	double sa;
-	double z;
-
-	// angular diameter distances
-	// pre-computed pars
-	double d_l, d_s, d_ls;
-	double sigma_c;
-	double sin_th, cos_th;
-	double sin_sa, cos_sa;
-
-} parametric_lens;
-
+#include <stdint.h>
 
 
 typedef struct {
 
-	int type;
-	double z_l;
-	double z_s, sigma_c;
-	double fpars[16];
-	double aux[16];
-	int ipars[8];
+	unsigned long type;
+	double z_l, z_s, d_l, d_s, d_ls, sigma_c, beta;
+	double fpars[32];
+	unsigned char flags[32];
 
-} generic_lens;
+} generic_mass_model;
 
 
 

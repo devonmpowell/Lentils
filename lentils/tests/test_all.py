@@ -21,13 +21,34 @@ from timeit import default_timer as timer
 class LensTests(TestCase):
 
 
-    def test_delaunay_lens_operator(self):
+    def test_lensmodel(self):
 
         return
 
-        # load image data just for mask and noise
-        imdata = Dataset.image_from_fits(f'{testpath}/data_optical_2d/data.fits',
-                noise=0.0304896, maskfits=f'{testpath}/data_optical_2d/mask.fits', 
+        lensmodel = GlobalLensModel()
+        lensmodel.add_component(PowerLawEllipsoid())
+        lensmodel.add_component(ExternalPotential())
+        #lensmodel.add_component(SPEMD(z=0.15))
+        #lensmodel.add_component(SPEMD(z=0.25))
+        #lensmodel.add_component(SPEMD(z=4.05))
+        #lensmodel.add_component(SPEMD(z=0.05))
+
+        points = np.random.normal(size=(4,2))
+
+        lensmodel.deflect(points, 2.059)
+
+
+        #lensmodel.add_component(SIE(...))
+
+
+    def test_delaunay_lens_operator(self):
+
+
+        # load image data 
+        # it creats the data covariance and psf operators automatically
+        imdata = OpticalDataset(f'{testpath}/data_optical_2d/input/data.fits',
+                noise=0.0304896, mask=f'{testpath}/data_optical_2d/input/mask.fits', 
+                psf=f'{testpath}/data_optical_2d/input/psf.fits', psf_support=21,
                 bounds=[(-0.72,0.72),(-0.67,0.67)])
         image_space = imdata.space 
         print("data max =", np.max(imdata.data))
@@ -36,7 +57,11 @@ class LensTests(TestCase):
         plt.show()
 
         # make a lens model
-        lensmodel = LensModel() # default optical test for now
+        #lensmodel = LensModel() # default optical test for now
+
+        lensmodel = GlobalLensModel()
+        lensmodel.add_component(PowerLawEllipsoid(z=0.35))
+        lensmodel.add_component(ExternalPotential(z=0.35))
         lensop = DelaunayLensOperator(image_space, lensmodel, z_src=2.059, ncasted=1, mask=imdata.mask)
         src_space = lensop.space_right
 
@@ -55,7 +80,7 @@ class LensTests(TestCase):
         plt.imshow(lensed.T, extent=image_space._bounds.flatten(), **imargs)
         plt.show()
 
-        psfop = ConvolutionOperator(image_space, fitsfile='{}/psf.fits'.format(testdir), kernelsize=21)
+        psfop = ConvolutionOperator(image_space, fitsfile=f'{testpath}/data_optical_2d/input/psf.fits', kernelsize=21)
         blurred = psfop.apply(lensed)
         plt.imshow(blurred.T, extent=image_space._bounds.flatten(), **imargs)
         plt.show()

@@ -19,8 +19,6 @@
 
 - Re-organize sub-modules ('spaces', 'util'?)
 
-- Make cosmology a global property?
-
 - Broadcasting to full data shape, including channels and stokes
 
 - Get rid of space names...
@@ -32,3 +30,5 @@
 - Solver framework
 
 - scikit-sparse for Cholesky and solvers
+
+- Duck typing everywhere... quit typechecking function args!

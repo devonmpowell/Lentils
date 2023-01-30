@@ -14,6 +14,35 @@ typedef struct {
 	int idxmax[2];
 } tri_info;
 
+#if 0
+/*------Define the function that check whether a point is inside or outside a triangle of the source grid----------------*/
+void triangle_geometry(double *s, double *tri, double *weights_out, double *area)
+{
+
+	// compute the barycentric coordinates w[]
+	// they sum to 1, they are the interpolation weights
+	double c[2],a[2],b[2];
+	double w[3], invarea;
+	a[0]=tri[2*0+0]-s[0];
+	a[1]=tri[2*0+1]-s[1];
+	b[0]=tri[2*1+0]-s[0];
+	b[1]=tri[2*1+1]-s[1];
+	c[0]=tri[2*2+0]-s[0];
+	c[1]=tri[2*2+1]-s[1];
+	w[0]=b[0]*c[1]-c[0]*b[1];
+	w[1]=c[0]*a[1]-a[0]*c[1];
+	w[2]=a[0]*b[1]-b[0]*a[1];
+	*area = w[0]+w[1]+w[2];
+	invarea = 1.0/(*area);
+	w[0] *= invarea;
+	w[1] *= invarea;
+	w[2] *= invarea;
+	weights_out[0] = w[0];
+	weights_out[1] = w[1];
+	weights_out[2] = w[2];
+}
+#endif
+
 
 double reduce_triangle(tri_info *tri_in) {
 	double x1, y1, x2, y2, x3, y3; 
@@ -252,7 +281,7 @@ void manifold_lens_matrix_csr(int im_nx, int im_ny, int ncast, char *mask,
 				pos_tmp[2*v+1] = casted_points[2*p[v]+1];
 			
 			}
-			triangle_geometry(stmp, pos_tmp, weights, &atmp);
+			//triangle_geometry(stmp, pos_tmp, weights, &atmp);
 			for(v = 0; v < 3; ++v) {
 				vals[i] = weights[v]; 
 				cols[i++] = p[v];

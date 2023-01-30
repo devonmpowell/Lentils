@@ -6,63 +6,83 @@
 #include "common.h"
 #include "deflect.h"
 
-void deflect_SIE(parametric_lens lens, double x, double y, double *dx);
-void deflect_PEMD_series(parametric_lens lens, double x, double y, double *dx, int want_deriv, double *deriv);
-void external_shear(parametric_lens lens, double x, double y, double *ds, int want_deriv, double *deriv);
+// make an array of all the possible parametric lens functions
+typedef void (*defl_func)(generic_mass_model *gmm, double *x_in, double *dx, int want_deriv, double *deriv);
+void deflect_PEMD_series(generic_mass_model *gmm, double *x_in, double *dx, int want_deriv, double *deriv);
+void deflect_external_potential(generic_mass_model *gmm, double *x_in, double *dx, int want_deriv, double *deriv);
 
-void deflect_points(parametric_lens lens, double *p_in, int npoints, double *p_out, int want_deriv, double *deriv) 
-{
+// deflection functions for each lens type go in an array 
+// allows calling functions simply by indexing the lens model type
+defl_func deflection_functions[16] = {
+	&deflect_PEMD_series, // type 0
+	&deflect_external_potential, // type 1
+	NULL, NULL, NULL, NULL, NULL, 
+	NULL, NULL, NULL, NULL, NULL, 
+	NULL, NULL, NULL, NULL}; 
 
-	int p, d;
-	double x, y;
+
+void deflect(generic_mass_model *lenses, int nlens, double *x_in, double *x_out, int want_deriv, double *deriv) { 
+
+	int i;
 	double alpha[2];
 	double dtmp[16];
-	lens.sin_th = sin((lens.th*PI/180.0)+PI/2.0);
-	lens.cos_th = cos((lens.th*PI/180.0)+PI/2.0);
-	lens.sin_sa = sin((lens.sa*PI/180.0)+PI/2.0);
-	lens.cos_sa = cos((lens.sa*PI/180.0)+PI/2.0);
 
-	for(p = 0; p < npoints; ++p) {
-		x = p_in[2*p+0];
-		y = p_in[2*p+1];
+	x_out[0] = x_in[0];
+	x_out[1] = x_in[1];
+
+	for(i = 0; i < nlens; ++i) {
+
 		memset(alpha, 0, sizeof(alpha));
-		if(want_deriv)
-			memset(dtmp, 0, sizeof(dtmp));
+		//if(want_deriv)
+			//memset(dtmp, 0, sizeof(dtmp));
 
-		// TODO: why is deflect_SIE different?
-		// TODO: normalize to Einstein radius
-		//deflect_SIE(lens, x, y, alpha);
-		deflect_PEMD_series(lens, x, y, alpha, want_deriv, dtmp);
-
-		// Calculate the deflection angle for the external shear
-		external_shear(lens, x, y, alpha, want_deriv, dtmp);
+		// TODO: pass x_in or x_out for these?? How do multiple lens planes at the same z_l accumulate??
+		//deflection_functions[lenses[i].type](&lenses[i], x_out, alpha, want_deriv, deriv);
+		deflection_functions[lenses[i].type](&lenses[i], x_in, alpha, want_deriv, deriv);
 
 		// Lens equation 
-		p_out[2*p+0] = p_in[2*p+0] - alpha[0]; 
-		p_out[2*p+1] = p_in[2*p+1] - alpha[1]; 
+		x_out[0] -= alpha[0]; 
+		x_out[1] -= alpha[1]; 
 
 		// Derivatives
-		if(want_deriv) {
-			for(d = 0; d < 8; ++d) {
-				deriv[2*(d*npoints+p)+0] = dtmp[2*d+0];
-				deriv[2*(d*npoints+p)+1] = dtmp[2*d+1];
-			}
-		}
+		//if(want_deriv) {
+			//for(d = 0; d < 8; ++d) {
+				//deriv[2*(d*npoints+p)+0] = dtmp[2*d+0];
+				//deriv[2*(d*npoints+p)+1] = dtmp[2*d+1];
+			//}
+		//}
+	}
+}
+
+
+void deflect_points(generic_mass_model *lenses, int nlens, double *p_in, int npoints, double *p_out, int want_deriv, double *deriv) 
+{
+	int p;
+	for(p = 0; p < npoints; ++p) {
+		deflect(lenses, nlens, &p_in[2*p], &p_out[2*p], want_deriv, deriv);
 	}
 }
 
 
 /*----- Define the function for the deflection angle of the external shear----------------*/
-void external_shear(parametric_lens lens, double x, double y, double *ds, int want_deriv, double *deriv)
+void deflect_external_potential(generic_mass_model *gmm, double *x_in, double *dx, int want_deriv, double *deriv)
 {
-	double cs2,sn2,sx, sy;
 
-	sx = x - lens.x;
-	sy = y - lens.y;
+	// get pars in a nice format for this lens type
+	typedef struct {
+		double z_l, z_s, d_l, d_s, d_ls, sigma_c, beta;
+		double x, y, ss, sa, sin_sa, cos_sa; 
+	} ep_mass_model;
+	ep_mass_model lens = *((ep_mass_model*) &gmm->z_l);
+	double cs2,sn2,sx,sy;
+
+	// deflection angles, only external shear for now
+	sx = x_in[0] - lens.x;
+	sy = x_in[1] - lens.y;
 	cs2 = -lens.cos_sa*lens.cos_sa + lens.sin_sa*lens.sin_sa; // cos(2*sa);
 	sn2 = -2*lens.sin_sa*lens.cos_sa;  // sin(2*sa);
-	ds[0] += lens.ss*(cs2*sx+sn2*sy);
-	ds[1] += lens.ss*(sn2*sx-cs2*sy);
+	dx[0] += lens.ss*(cs2*sx+sn2*sy);
+	dx[1] += lens.ss*(sn2*sx-cs2*sy);
 
 	// derivatives
 	if(want_deriv) {
@@ -144,9 +164,15 @@ double complex hyp2f1_series(double t, double q, double complex z, int want_deri
 
 
 /*----- Define the function for the deflection angle of a broken power-law with external shear----------------*/
-void deflect_PEMD_series(parametric_lens lens, double xx, double yy, double *d, int want_deriv, double *deriv)
+void deflect_PEMD_series(generic_mass_model *gmm, double *x_in, double *dx, int want_deriv, double *deriv)
 {
 
+	// get pars in a nice format for this lens type
+	typedef struct {
+		double z_l, z_s, d_l, d_s, d_ls, sigma_c, beta;
+		double x, y, f, th, sin_th, cos_th, b, qh, rc;
+	} pemd_mass_model;
+	pemd_mass_model lens = *((pemd_mass_model*) &gmm->z_l);
 	double x, y, rs, rs2, b, t, q;
 	double complex A, F, alpha, z, crot;
 	double complex fderivs[4];
@@ -181,7 +207,7 @@ void deflect_PEMD_series(parametric_lens lens, double xx, double yy, double *d, 
 	//b = lens.b;
 	b = pow(0.5*lens.b*pow(q,t-0.5)*(3.0-t)/(2.0-t),1.0/t);
 	crot = lens.cos_th - I*lens.sin_th; 
-	z = ((xx-lens.x) + I*(yy-lens.y)) * crot;
+	z = ((x_in[0]-lens.x) + I*(x_in[1]-lens.y)) * crot;
 	x = creal(z);
 	y = cimag(z);
 	rs2 = q*q*x*x+y*y;
@@ -195,8 +221,8 @@ void deflect_PEMD_series(parametric_lens lens, double xx, double yy, double *d, 
 
 	// Rotate the components (now back into cartesian coords)
 	alpha = conj(A*F*crot);
-	d[0] += creal(alpha);
-	d[1] += cimag(alpha);
+	dx[0] += creal(alpha);
+	dx[1] += cimag(alpha);
 
 	// compute derivatives of parameters only if requested
 	if(want_deriv) {
@@ -237,70 +263,7 @@ void deflect_PEMD_series(parametric_lens lens, double xx, double yy, double *d, 
 }
 
 
-/*----- Define the function for the deflection angle of the SIS/SIE or SPMEDs + external shear----------------*/
-void deflect_SIE(parametric_lens lens, double x, double y, double *dx)
-{
-	double sx,sy;
-	double sx_r,sy_r;
-	double dx_r,dy_r;
-	double psi;
-	
-	// get the rotated source coordinates and psi
-	sx = x - lens.x;
-	sy = y - lens.y;
-	sx_r = sx*lens.cos_th + sy*lens.sin_th;
-	sy_r = -sx*lens.sin_th + sy*lens.cos_th;
-	psi = sqrt(lens.f*lens.f*(lens.rc*lens.rc + sx_r*sx_r) + sy_r*sy_r);
-
-	//Calculate the deflection angle for the SIE lens
-	dx_r = (lens.b*sqrt(lens.f)/sqrt(1.0-lens.f*lens.f))*atan( sqrt(1.0-lens.f*lens.f)*sx_r/(psi+lens.rc));
-	dy_r = (lens.b*sqrt(lens.f)/sqrt(1.0-lens.f*lens.f))*atanh(sqrt(1.0-lens.f*lens.f)*sy_r/(psi+lens.rc*lens.f*lens.f));
-
-	//rotate back
-	dx[0] = dx_r*lens.cos_th - dy_r*lens.sin_th;
-	dx[1] = dx_r*lens.sin_th + dy_r*lens.cos_th;
-
-
-	// from an old branch of the code
 #if 0
-	//Calculate the deflection angle for the SIE lens
-	if( lenses.qh == 0.5)
-	{
-		dx_tmp = (lenses.b*sqrt(lenses.f)/sqrt(1.0-pow(lenses.f,2.0)))*atan(sqrt(1.0-pow(lenses.f,2.0))*sx_r/(psi+lenses.rc));
-		dy_tmp = (lenses.b*sqrt(lenses.f)/sqrt(1.0-pow(lenses.f,2.0)))*atanh(sqrt(1.0-pow(lenses.f,2.0))*sy_r/(psi+lenses.rc*pow(lenses.f,2.0)));
-	}
-
-	//Calculate the deflection angle for SPEMDs from fastell by Barkana
-	else
-	{
-		rc = (lenses.rc*lenses.rc);
-		b =  ( 1.5 - lenses.qh) * (lenses.b/(2.0*sqrt(lenses.f)));
-
-		fastelldefl_(&sx_r,&sy_r,&b,&lenses.qh,&lenses.f,&rc,dfl);
-
-		dx_tmp = dfl[0];
-		dy_tmp = dfl[1];
-	}
-#endif
-
-
-
-}
-
-#if 0
-
-	// TODO: Calculate the deflection angle for SPEMDs from fastell by Barkana
-	//else
-	//{
-		//rc = (lenses.rc*lenses.rc);
-		//b =  ( 1.5 - lenses.qh) * (lenses.b/(2.0*sqrt(lenses.f)));
-
-		//fastelldefl_(&sx_r,&sy_r,&b,&lenses.qh,&lenses.f,&rc,dfl);
-
-		//dx_tmp = dfl[0];
-		//dy_tmp = dfl[1];
-	//}
-	
 
 
 /*----- Define the function for the deflection angle of exponential disk (from Keeton with fitting weights by Matt Auger)----------------*/
@@ -505,29 +468,6 @@ void deflect_NFW(Lens lenses, Gdat *sr, int ns, double x, double y, double *d, d
 	else{
 		for(i = 0; i < 4; i++){
 			dalpha[i] = 0.0;
-		}
-	}
-}
-
-/*------Define the function for the deflection angle----------------*/
-void deflect(Lens lenses, Gdat *sr, int ns, double x, double y, double *d)
-{
-	double dalpha[4]={0.0,0.0,0.0,0.0};
-
-	if (ns == -1){//main lens
-		if(lenses.shape == 0){//elliptical power-law, SIS, SIE
-			deflect_SIE(lenses,x,y,d);
-		}
-		else if (lenses.shape == 1){//exponential disk
-			deflect_expdisk(lenses,x,y,d);
-		}
-	}
-	else{
-		if(lenses.shapesub[ns] == 0){//power-law model for substructure
-			deflect_powerlaw(lenses,sr,ns,x, y, d, dalpha, 0);
-		}
-		else if(lenses.shapesub[ns] == 1 || lenses.shapesub[ns] == 2){//NFW model for substructure
-			deflect_NFW(lenses,sr,ns,x,y,d,dalpha,0);
 		}
 	}
 }

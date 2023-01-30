@@ -69,8 +69,6 @@ void triangle_gradient_csr(int num_tris, int *tri_inds, double *tri_pos, int *ro
 	double p0x, p0y, p1x, p1y, p2x, p2y;
 	double weight, area;
 
-	printf("Num tris = %d\n", num_tris);
-
 	for(t = 0, i = 0, row = 0; t < num_tris; ++t) {
 
 		// triangle geometry

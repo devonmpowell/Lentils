@@ -5,9 +5,9 @@ import astropy.io.fits as fits
 from .test_utils import testpath, errtol, max_relative_error 
 from lentils.common import VisibilitySpace, ImageSpace, OpticalDataset, RadioDataset 
 from lentils.operators import NUFFTOperator, DFTOperator, DelaunayLensOperator, PriorCovarianceOperator
-from lentils.models import LensModel
+from lentils.models import GlobalLensModel, PowerLawEllipsoid, ExternalPotential
 
-#from .test_utils import plt, imargs
+from .test_utils import plt, imargs
 #from sksparse.cholmod import cholesky
 import scipy.sparse.linalg as linalg 
 
@@ -26,7 +26,10 @@ class SolverTests(TestCase):
         covop = imdata.covariance_operator
 
         # make a lens model
-        lensmodel = LensModel() # default optical test for now
+        lensmodel = GlobalLensModel()
+        lensmodel.add_component(PowerLawEllipsoid(b=0.463544, th=-14.278754, f=0.799362, x=-0.046847, 
+            y=-0.105357, rc=0.000571, qh=0.506730, z=0.881000))
+        lensmodel.add_component(ExternalPotential(x=-0.046847, y=-0.105357, ss=-0.046500, sa=7.921300, z=0.881000))
         lensop = DelaunayLensOperator(image_space, lensmodel, z_src=2.059, ncasted=3, mask=imdata.mask)
         src_space = lensop.space_right
         points = src_space.points
@@ -76,9 +79,13 @@ class SolverTests(TestCase):
         image_space = ImageSpace(shape=(1024,1024), bounds=[(-1.15, 0.35,), (-0.65, 0.85)], 
                 mask=f'{testpath}/data_radio_2d/input/mask_1024_zoom.fits')
         uvdata = RadioDataset(f'{testpath}/data_radio_2d/input/j0751_small_snr1x.uvfits', image_space=image_space)
-        lensmodel = LensModel(b=0.402005, th=48.987322, f=0.796415, x=-0.445178, y=0.178450, 
-                rc=1.0e-4, qh=0.504365, ss=0.070171, sa=75.522635, z=0.35)
-        lensop = DelaunayLensOperator(image_space, lensmodel, z_src=3.2, ncasted=5)
+
+        # lens model
+        lensmodel = GlobalLensModel()
+        lensmodel.add_component(PowerLawEllipsoid(b=0.402005, th=48.987322, f=0.796415, x=-0.445178, y=0.178450, 
+                rc=1.0e-4, qh=0.504365, z=0.35))
+        lensmodel.add_component(ExternalPotential(x=-0.445178, y=0.178450, ss=0.070171, sa=75.522635, z=0.35))
+        lensop = DelaunayLensOperator(image_space, lensmodel, z_src=3.2, ncasted=6)
         src_space = lensop.space_right
         points = src_space.points
 
@@ -100,8 +107,8 @@ class SolverTests(TestCase):
         #print("Logdet (PC) =", logdet(lu))
         lhs_op = linalg.LinearOperator((src_space.size,src_space.size), matvec=lhs.apply)
         pc = linalg.LinearOperator((src_space.size, src_space.size), lu.solve)
-        sol, info = linalg.cg(lhs_op, rhs, tol=1.0e-10, atol=1.0e-14, M=pc)
-        err_max = max_relative_error(lhs*sol, rhs)
+        sol_cg, info = linalg.cg(lhs_op, rhs, tol=1.0e-10, atol=1.0e-14, M=pc)
+        err_max = max_relative_error(lhs*sol_cg, rhs)
         self.assertLess(err_max, errtol) 
 
         # check against DFT computation
@@ -113,10 +120,20 @@ class SolverTests(TestCase):
         lu = linalg.splu(lhs)
         #print("Logdet (Exact) =", logdet(lu))
         sol_dft = lu.solve(rhs)
-        err_max = max_relative_error(sol, sol_dft)
+        err_max = max_relative_error(sol_cg, sol_dft)
         self.assertLess(err_max, errtol) 
 
         # TODO: check these also against reference solutions?
+        #reference = np.unique(np.loadtxt(f'{testpath}/data_radio_2d/reference/best_reference_dft_source.data', skiprows=1, usecols=3))
+        #print("reference shape =", reference)
+        #err_max = max_relative_error(np.sort(sol_cg), np.sort(reference))
+        #print("Err max (relative to reference file) =", err_max)
+        #self.assertLess(err_max, errtol) 
+
+        #plt.tripcolor(points[:,0],points[:,1], src_space.tris, sol_cg, shading='gouraud')
+        #print("Solution max =", np.max(sol_cg))
+        #plt.title('Solution')
+        #plt.show()
 
 
 

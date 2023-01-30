@@ -14,7 +14,7 @@ from astropy.io import fits
 
 
 from lentils.common import Space, VisibilitySpace, FourierSpace, ImageSpace, DelaunaySpace 
-from lentils.models import LensModel
+from lentils.models import GlobalLensModel
 from lentils.backend import libtriangles, libnufft, c_nufft, libraster
 
 
@@ -544,8 +544,8 @@ class DelaunayLensOperator(LensOperator):
 
         if not isinstance(image_space, ImageSpace):
             raise TypeError("image_space must be ImageSpace")
-        if not isinstance(lensmodel, LensModel):
-            raise TypeError("lensmodel must be LensModel")
+        if not isinstance(lensmodel, GlobalLensModel):
+            raise TypeError("lensmodel must be GlobalLensModel")
 
         # make image-plane masks containing "casted" and "uncasted" points
         image_mask = image_space.mask
