@@ -223,10 +223,9 @@ class ConvolutionOperator(Operator):
             row_inds = np.zeros(nrows+1, dtype=np.int32) 
             cols = np.zeros(nrows*nnz_per_row, dtype=np.int32) 
             vals = np.zeros(nrows*nnz_per_row, dtype=np.float64) 
-            libnufft.convolution_matrix_csr(
-                    image_space.nx, image_space.ny, 
-                    self._kernel.shape[-2], self._kernel.shape[-1],
-                    self._kernel, row_inds, cols, vals)
+            libnufft.convolution_matrix_csr(image_space,
+                    self._kernel.shape[-2], self._kernel.shape[-1], self._kernel, 
+                    row_inds, cols, vals)
             self._mat = sparse.csr_matrix((vals,cols,row_inds), shape=(nrows,nrows))
 
         # finish up and pass along supers
@@ -247,8 +246,6 @@ class DiagonalOperator(Operator):
 
     def __init__(self, space, data, options=None, **superargs):
 
-        # TODO: generalize this to higher than space.shape 
-        # TODO: check data and space compatibility
         if options == None:
             self._data = data
             matdim = np.product(space.shape)
@@ -280,8 +277,7 @@ class PriorCovarianceOperator(Operator):
             row_inds = np.zeros(2*space.num_triangles+1, dtype=np.int32) 
             cols = np.zeros(3*2*space.num_triangles, dtype=np.int32) 
             vals = np.zeros(3*2*space.num_triangles, dtype=np.float64) 
-            libtriangles.triangle_gradient_csr(
-                    space.num_triangles, space.triangles, space.points, row_inds, cols, vals)
+            libtriangles.triangle_gradient_csr(space, row_inds, cols, vals)
             self._op = sparse.csr_matrix((vals,cols,row_inds), shape=(2*space.num_triangles,space.size))
 
         else:

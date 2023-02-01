@@ -63,10 +63,11 @@ libdeflect.deflect_points.argtypes = [c_lensmodel_p, c_int, arg_c_double_p, c_in
 
 libtriangles = ctypeslib.load_library('triangles', modulepath)
 libtriangles.triangle_gradient_csr.restype = None
-libtriangles.triangle_gradient_csr.argtypes = [c_int, arg_c_int_p, arg_c_double_p, arg_c_int_p, arg_c_int_p, arg_c_double_p]
+libtriangles.triangle_gradient_csr.argtypes = [delaunay_space_ctype, 
+        arg_c_int_p, arg_c_int_p, arg_c_double_p]
 libtriangles.delaunay_lens_matrix_csr.restype = None
-libtriangles.delaunay_lens_matrix_csr.argtypes = [c_int, c_int, c_int, arg_c_bool_p, 
-        arg_c_double_p, arg_c_int_p, arg_c_double_p, arg_c_int_p, arg_c_int_p, arg_c_int_p, arg_c_double_p]
+libtriangles.delaunay_lens_matrix_csr.argtypes = [image_space_ctype, delaunay_space_ctype, 
+        c_int, arg_c_double_p, arg_c_int_p, arg_c_int_p, arg_c_int_p, arg_c_double_p]
 
 
 ############################################################
@@ -99,8 +100,9 @@ libnufft.grid_cpu.argtypes = [visibility_space_ctype, arg_c_complex_p,
 libnufft.dft_matrix_csr.restype = None
 libnufft.dft_matrix_csr.argtypes = [visibility_space_ctype, image_space_ctype, 
         arg_c_int_p, arg_c_int_p, arg_c_double_p]
+
 libnufft.convolution_matrix_csr.restype = None
-libnufft.convolution_matrix_csr.argtypes = [c_int, c_int, c_int, c_int, 
+libnufft.convolution_matrix_csr.argtypes = [image_space_ctype, c_int, c_int, 
         arg_c_double_p, arg_c_int_p, arg_c_int_p, arg_c_double_p]
 
 

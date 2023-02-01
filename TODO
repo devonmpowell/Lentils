@@ -1,5 +1,7 @@
 
-- Mask in convolution matrix
+- Check whether convolution matrix is actually transposed?
+
+- Write a unit test for the convolution operator: forward vs. transposed and FFT
 
 - Test BCB convolution for odd-size grid
 
@@ -18,8 +20,6 @@
 - Documentation!!!
 
 - Clean up unit tests, split into more manageable files
-
-- Split out operator_base into specific files
 
 - Concatenating explicit matrices
 

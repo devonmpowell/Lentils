@@ -62,25 +62,25 @@ void triangle_geometry_from_inds(double *s, int *tri_inds, double *weights_out, 
 
 
 // gradient matrix assembly for csr format
-void triangle_gradient_csr(int num_tris, int *tri_inds, double *tri_pos, int *row_inds, int *cols, double *vals)
+void triangle_gradient_csr(delaunay_space trispace, int *row_inds, int *cols, double *vals)
 {
 
 	int i, t, row, v0, v1, v2;
 	double p0x, p0y, p1x, p1y, p2x, p2y;
 	double weight, area;
 
-	for(t = 0, i = 0, row = 0; t < num_tris; ++t) {
+	for(t = 0, i = 0, row = 0; t < trispace.num_tris; ++t) {
 
 		// triangle geometry
-		v0 = tri_inds[3*t+0];
-		v1 = tri_inds[3*t+1];
-		v2 = tri_inds[3*t+2];
-		p0x = tri_pos[2*v0+0];
-		p0y = tri_pos[2*v0+1];
-		p1x = tri_pos[2*v1+0];
-		p1y = tri_pos[2*v1+1];
-		p2x = tri_pos[2*v2+0];
-		p2y = tri_pos[2*v2+1];
+		v0 = trispace.triangles[3*t+0];
+		v1 = trispace.triangles[3*t+1];
+		v2 = trispace.triangles[3*t+2];
+		p0x = trispace.points[2*v0+0];
+		p0y = trispace.points[2*v0+1];
+		p1x = trispace.points[2*v1+0];
+		p1y = trispace.points[2*v1+1];
+		p2x = trispace.points[2*v2+0];
+		p2y = trispace.points[2*v2+1];
 		area = 0.5*(p0y*(p1x - p2x) + p1y*p2x - p1x*p2y + p0x*(-p1y + p2y));
 		//weight = 1.0;
 		weight = 1.0/(2*area);
@@ -102,16 +102,16 @@ void triangle_gradient_csr(int num_tris, int *tri_inds, double *tri_pos, int *ro
 }
 
 
-void delaunay_lens_matrix_csr(int im_nx, int im_ny, int ncast, char *mask, 
-		double *uncasted_points, int *uncasted_tri_inds, double *casted_points, int *all_tri_inds, 
+void delaunay_lens_matrix_csr(image_space imspace, delaunay_space trispace, 
+		int ncast, double *uncasted_points, int *uncasted_tri_inds, 
 		int *row_inds, int *cols, double *vals) {
 
 	int row, i, iim, jim, v, cast_idx, uncast_idx, tind, p[3];
 	double atmp, stmp[2], pos_tmp[6], weights[3];
-	for(iim = 0, i = 0, row = 0, cast_idx = 0, uncast_idx = 0; iim < im_nx; ++iim)
-	for(jim = 0; jim < im_ny; ++jim, ++row) {
+	for(iim = 0, i = 0, row = 0, cast_idx = 0, uncast_idx = 0; iim < imspace.nx; ++iim)
+	for(jim = 0; jim < imspace.ny; ++jim, ++row) {
 		row_inds[row] = i;
-		if(!mask[row]) continue;
+		if(!imspace.mask[row]) continue;
 		if(iim%ncast || jim%ncast) {
 			// uncasted points
 			stmp[0] = uncasted_points[2*uncast_idx+0];
@@ -119,9 +119,9 @@ void delaunay_lens_matrix_csr(int im_nx, int im_ny, int ncast, char *mask,
 			tind = uncasted_tri_inds[uncast_idx++];
 			if(tind < 0) continue;
 			for(v = 0; v < 3; ++v) {
-				p[v] = all_tri_inds[3*tind+v];
-				pos_tmp[2*v+0] = casted_points[2*p[v]+0];
-				pos_tmp[2*v+1] = casted_points[2*p[v]+1];
+				p[v] = trispace.triangles[3*tind+v];
+				pos_tmp[2*v+0] = trispace.points[2*p[v]+0];
+				pos_tmp[2*v+1] = trispace.points[2*p[v]+1];
 			
 			}
 			triangle_geometry(stmp, pos_tmp, weights, &atmp);

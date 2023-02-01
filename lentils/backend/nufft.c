@@ -124,64 +124,28 @@ void dft_matrix_csr(visibility_space visspace, image_space imspace, int *row_ind
 
 
 
-void convolution_matrix_csr(int im_nx, int im_ny, int k_nx, int k_ny, double *kernel, int *row_inds, int *cols, double *vals)
-{
+void convolution_matrix_csr(image_space imspace, int k_nx, int k_ny, double *kernel, 
+		int *row_inds, int *cols, double *vals) {
 
-	// TODO: use the image-plane mask!
-#if 0
-
-	int row, i, iim, jim, v, cast_idx, uncast_idx, tind, p[3];
-	double atmp, stmp[2], pos_tmp[6], weights[3];
-	for(iim = 0, i = 0, row = 0, cast_idx = 0, uncast_idx = 0; iim < im_nx; ++iim)
-	for(jim = 0; jim < im_ny; ++jim, ++row) {
-		row_inds[row] = i;
-		if(!mask[row]) continue;
-		if(iim%ncast || jim%ncast) {
-			// uncasted points
-			stmp[0] = uncasted_points[2*uncast_idx+0];
-			stmp[1] = uncasted_points[2*uncast_idx+1];
-			tind = uncasted_tri_inds[uncast_idx++];
-			if(tind < 0) continue;
-			for(v = 0; v < 3; ++v) {
-				p[v] = all_tri_inds[3*tind+v];
-				pos_tmp[2*v+0] = casted_points[2*p[v]+0];
-				pos_tmp[2*v+1] = casted_points[2*p[v]+1];
-			
-			}
-			triangle_geometry(stmp, pos_tmp, weights, &atmp);
-			for(v = 0; v < 3; ++v) {
-				vals[i] = weights[v]; 
-				cols[i++] = p[v];
-			}
-		}
-		else {
-			// casted points
-			vals[i] = 1.0; 
-			cols[i++] = cast_idx++;
-		}
-	}
-	row_inds[row] = i;
-
-
-
-#endif
-
-	// TODO: mask
 	int row, col, i, iim, jim, ik, jk, icc, jcc;
 	int k_xmid = (k_nx+1)/2;
 	int k_ymid = (k_ny+1)/2;
-	for(iim = 0, i = 0, row = 0; iim < im_nx; ++iim)
-	for(jim = 0; jim < im_ny; ++jim) {
-		row_inds[row++] = i;
+	for(iim = 0, i = 0, row = 0; iim < imspace.nx; ++iim)
+	for(jim = 0; jim < imspace.ny; ++jim, ++row) {
+		row_inds[row] = i;
 		for(ik = 0; ik < k_nx; ++ik)
 		for(jk = 0; jk < k_ny; ++jk) {
 			icc = iim + ik - k_xmid;
 			jcc = jim + jk - k_ymid;
-			if(icc < 0 || icc >= im_nx) continue;
-			if(jcc < 0 || jcc >= im_ny) continue;
-			col = im_ny*icc + jcc;
+			col = imspace.ny*icc + jcc;
+			if(icc < 0 || icc >= imspace.nx) continue;
+			if(jcc < 0 || jcc >= imspace.ny) continue;
+			if(!imspace.mask[col]) continue;
+
+			// TODO: check to see if we need to transpose the kernel??
 			vals[i] = kernel[k_ny*ik+jk]; 
-			cols[i++] = col;
+			cols[i] = col;
+			i++;
 		}
 	}
 	row_inds[row] = i;

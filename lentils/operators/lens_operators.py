@@ -100,24 +100,26 @@ class DelaunayLensOperator(LensOperator):
 
         # deflect the rays
         # Get Delaunay triangulation and triangle indices of uncasted rays
-        self._casted_points = lensmodel.deflect(image_points[casted_mask], z_s=z_src)
-        self._uncasted_points = lensmodel.deflect(image_points[uncasted_mask], z_s=z_src)
-        source_space = DelaunaySpace(self._casted_points) 
-        uncasted_tri_inds = source_space.delaunay.find_simplex(self._uncasted_points)
+        self.casted_points = lensmodel.deflect(image_points[casted_mask], z_s=z_src)
+        self.uncasted_points = lensmodel.deflect(image_points[uncasted_mask], z_s=z_src)
+        source_space = DelaunaySpace(self.casted_points) 
+        uncasted_tri_inds = source_space.delaunay.find_simplex(self.uncasted_points)
 
         # make the matrix
-        num_casted = np.sum(casted_mask)
-        num_uncasted = np.sum(uncasted_mask)
+        numcasted = np.sum(casted_mask)
+        numuncasted = np.sum(uncasted_mask)
         num_rows = image_space.size
-        num_vals = num_casted + 3*num_uncasted
+        num_vals = numcasted + 3*numuncasted
         row_inds = np.zeros(num_rows+1, dtype=np.int32) 
         cols = np.zeros(num_vals, dtype=np.int32) 
         vals = np.zeros(num_vals, dtype=np.float64) 
-        libtriangles.delaunay_lens_matrix_csr(
-            image_space.nx, image_space.ny, ncasted, 
-            image_mask, self._uncasted_points, uncasted_tri_inds, 
-            source_space.points, source_space.triangles,
-            row_inds, cols, vals)
+        #libtriangles.delaunay_lens_matrix_csr(
+            #image_space.nx, image_space.ny, ncasted, 
+            #image_mask, self.uncasted_points, uncasted_tri_inds, 
+            #source_space.points, source_space.triangles,
+            #row_inds, cols, vals)
+        libtriangles.delaunay_lens_matrix_csr(image_space, source_space,
+                ncasted, self.uncasted_points, uncasted_tri_inds, row_inds, cols, vals)
         self._mat = sparse.csr_matrix((vals,cols,row_inds), shape=(image_space.size,source_space.size))
 
         # finish up and pass along supers
