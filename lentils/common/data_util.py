@@ -67,7 +67,7 @@ def _load_uvfits(file, combine_stokes):
         rawmask = rawmask[:,:,:,0] 
 
     # shape and store
-    uvspace = VisibilitySpace(name="VisibilitySpace from file {}".format(file), channels=channels, uvcoords=uvcoords)
+    uvspace = VisibilitySpace(channels=channels, uvcoords=uvcoords)
     reordered_data = np.moveaxis(rawvisdata.reshape((uvspace.num_rows, uvspace.num_channels, uvspace.num_stokes)), [0,1,2], [2,0,1]).astype(np.complex128, order='C')
     reordered_sigma = np.moveaxis(rawsigma.reshape((uvspace.num_rows, uvspace.num_channels, uvspace.num_stokes)), [0,1,2], [2,0,1]).astype(np.float64, order='C')
     reordered_mask = np.moveaxis(rawmask.reshape((uvspace.num_rows, uvspace.num_channels, uvspace.num_stokes)), [0,1,2], [2,0,1]).astype(np.bool_, order='C')

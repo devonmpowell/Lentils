@@ -6,6 +6,7 @@ from .test_utils import testpath, errtol, max_relative_error
 from lentils.common import VisibilitySpace, ImageSpace, RadioDataset 
 from lentils.operators import NUFFTOperator, DFTOperator
 
+from .test_utils import plt, imargs
 
 class NUFFTTests(TestCase):
 
@@ -17,11 +18,11 @@ class NUFFTTests(TestCase):
         for scale in np.linspace(0.0,55.0,20):
             all_uv.append([np.random.normal(scale=1e5*scale,size=(uv_per_scale,3))])
         all_uv = np.array(all_uv, dtype=np.float64).reshape((-1,3))
-        uv_space = VisibilitySpace(name='RandomVisTest', channels=[0.5], uvcoords=all_uv)
+        uv_space = VisibilitySpace(channels=[0.5], uvcoords=all_uv)
         image_space = ImageSpace(shape=(236,257), bounds=[(-0.5,0.7),(-0.7,0.5)])
 
         # put some fake data through the pipeline
-        vdata = np.random.normal(size=(uv_space.shape[0],2)).view(np.complex128)
+        vdata = np.random.normal(size=(uv_space.num_rows,2)).view(np.complex128)
         nufft = NUFFTOperator(uv_space, image_space)
         dft = DFTOperator(uv_space, image_space)
         nufftvec = nufft.T * vdata

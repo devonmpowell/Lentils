@@ -53,7 +53,7 @@ class LensTests(TestCase):
         image_space = imdata.space 
         print("data max =", np.max(imdata.data))
         print("data shape =", imdata.data.shape)
-        plt.imshow(imdata.data.T, extent=image_space._bounds.flatten(), **imargs)
+        plt.imshow(imdata.data.T, extent=image_space.bounds, **imargs)
         plt.show()
 
         # make a lens model
@@ -70,23 +70,23 @@ class LensTests(TestCase):
         testsrc = np.exp(-1.0/(2.0*0.02**2)*np.sum((points)**2, axis=-1))
         cr = np.array([0.03,0.04])
         testsrc += 2.0*np.exp(-1.0/(2.0*0.01**2)*np.sum((points-cr)**2, axis=-1))
-        plt.tripcolor(points[:,0],points[:,1], src_space.tris, testsrc, shading='gouraud')
+        plt.tripcolor(points[:,0],points[:,1], src_space.triangles, testsrc, shading='gouraud')
         #plt.set_xlims(*image_space._bounds[0])
         #plt.set_ylims(*image_space._bounds[1])
         plt.show()
 
         # apply operators and noise
         lensed = lensop.apply(testsrc)
-        plt.imshow(lensed.T, extent=image_space._bounds.flatten(), **imargs)
+        plt.imshow(lensed[0,0,:].T, extent=image_space.bounds, **imargs)
         plt.show()
 
         psfop = ConvolutionOperator(image_space, fitsfile=f'{testpath}/data_optical_2d/input/psf.fits', kernelsize=21)
         blurred = psfop.apply(lensed)
-        plt.imshow(blurred.T, extent=image_space._bounds.flatten(), **imargs)
+        plt.imshow(blurred[0,0,:].T, extent=image_space.bounds, **imargs)
         plt.show()
 
         noised = blurred + np.random.normal(scale=imdata.sigma) 
-        plt.imshow(noised.T, extent=image_space._bounds.flatten(), **imargs)
+        plt.imshow(noised[0,0,:].T, extent=image_space.bounds, **imargs)
         plt.show()
 
     def test_gradients(self):

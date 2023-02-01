@@ -38,87 +38,88 @@ double kb_optimal_beta(double padfac, double wsup) {
 }
 
 
-void evaluate_apodization_correction(nufft_pars *nufft, double *out) {
+void zero_pad(image_space imspace, double *image, image_space padspace, double *padded, int direction) {
 
-	int i, j, idx;
-	double x, y, val;
-	for(i = 0; i < nufft->nx_im; ++i)
-	for(j = 0; j < nufft->ny_im; ++j) {
-
-		// c (row-major) ordering
-		idx = nufft->ny_im*i + j;
-		x = (i - 0.5*nufft->nx_im)/nufft->nx_pad; 
-		y = (j - 0.5*nufft->ny_im)/nufft->ny_pad; 
-		val = 1.0/kb_w(x, y, nufft->kb_beta, nufft->wsup);
-		out[idx] = val;
+	int iim, jim, idxim, idxpad;
+	int padx = (padspace.nx-imspace.nx)/2;
+	int pady = (padspace.ny-imspace.ny)/2;
+	if(direction == FORWARD) {
+		memset(padded, 0, padspace.nx*padspace.ny*sizeof(double));
+	}
+	for(iim = 0; iim < imspace.nx; ++iim)
+	for(jim = 0; jim < imspace.ny; ++jim) {
+		idxim = imspace.ny*iim + jim;
+		idxpad = padspace.ny*(padx+iim) + (pady+jim);
+		if(direction == FORWARD) {
+			padded[idxpad] = image[idxim];
+		}
+		else if(direction == ADJOINT) {
+			image[idxim] = padded[idxpad];
+		}
 	}
 }
 
-#if 1
-void zero_pad(nufft_pars *nufft, double *in, double *out, int direction) {
+
+#if 0
+void zpad_matrix_csr(image_space imspace, image_space padspace, int *row_inds, int *cols, double *vals) {
 
 	int iim, jim, idxim, idxpad;
-	if(direction == FORWARD) {
-		memset(out, 0, nufft->nx_pad*nufft->ny_pad*sizeof(double));
-	}
-	for(iim = 0; iim < nufft->nx_im; ++iim)
-	for(jim = 0; jim < nufft->ny_im; ++jim) {
-		// c (row-major) ordering
-		idxim = nufft->ny_im*iim + jim;
-		idxpad = nufft->ny_pad*(nufft->padx+iim) + (nufft->pady+jim);
-		if(direction == FORWARD) {
-			out[idxpad] = in[idxim];
-		}
-		else if(direction == ADJOINT) {
-			out[idxim] = in[idxpad];
-		}
-	}
+	int padx = (padspace.nx-imspace.nx)/2;
+	int pady = (padspace.ny-imspace.ny)/2;
+
+
+	//for(iim = 0; iim < imspace.nx; ++iim)
+	//for(jim = 0; jim < imspace.ny; ++jim) {
+		//idxim = imspace.ny*iim + jim;
+		//idxpad = padspace.ny*(padx+iim) + (pady+jim);
+		//if(direction == FORWARD) {
+			//padded[idxpad] = image[idxim];
+		//}
+		//else if(direction == ADJOINT) {
+			//image[idxim] = padded[idxpad];
+		//}
+	//}
+
+
 }
 #endif
 
 
 
-void dft_matrix_csr(nufft_pars *nufft, char *mask, int *row_inds, int *cols, double *vals)
+
+void dft_matrix_csr(visibility_space visspace, image_space imspace, int *row_inds, int *cols, double *vals)
 {
 
 	int row, col, i, vis, iim, jim, odd;
 	double x, y, u, v, arg, val;
 
 	int ch_vis = 0;
-	for(row = 0, i = 0; row < 2*nufft->nrows; ++row)  {
+	for(row = 0, i = 0; row < 2*visspace.nrows; ++row)  {
 
 		vis = row/2;
 		odd = row%2;
 		row_inds[row] = i;
+
+		u = visspace.uv[3*vis+0]*visspace.channels[ch_vis];
+		v = -visspace.uv[3*vis+1]*visspace.channels[ch_vis];
 		
-		for(iim = 0, col = 0; iim < nufft->nx_im; ++iim)
-		for(jim = 0; jim < nufft->ny_im; ++jim, ++col) {
+		for(iim = 0, col = 0; iim < imspace.nx; ++iim)
+		for(jim = 0; jim < imspace.ny; ++jim, ++col) {
 
-			if(!mask[col]) continue;
+			if(!imspace.mask[col]) continue;
 
-			u = nufft->uv[3*vis+0]*nufft->channels[ch_vis];
-			v = -nufft->uv[3*vis+1]*nufft->channels[ch_vis];
+			x = iim*imspace.dx + imspace.xmin;
+			y = jim*imspace.dy + imspace.ymin;
+			arg = -2.0*M_PI*ARCSEC_TO_RADIANS*(u*x+v*y);
+			if(odd) val = sin(arg);
+			else val = cos(arg);
 
-
-			x = iim*nufft->dx + nufft->xmin;
-			y = jim*nufft->dy + nufft->ymin;
-			arg = -2.0*M_PI*(u*x+v*y);
-
-			if(odd) {
-				val = sin(arg);
-			}
-			else {
-				val = cos(arg);
-			}
-
-			// casted points
 			vals[i] = val; 
-			cols[i++] = col; 
-
+			cols[i] = col; 
+			i++;
 		}
 	}
 	row_inds[row] = i;
-
 }
 
 
@@ -188,79 +189,36 @@ void convolution_matrix_csr(int im_nx, int im_ny, int k_nx, int k_ny, double *ke
 
 
 
-void init_nufft(nufft_pars *nufft, int nx, int ny, double xmin, double ymin, double xmax, double ymax, 
-		double pad_factor, int kernel_support, int nrows, int nch, int nstokes, double *uv, double *channels) {
-	
-
-	// get padded dimensions
-	nufft->nx_im = nx;
-	nufft->ny_im = ny;
-	nufft->padx = floor(((pad_factor-1.0)*nx+1)/2); // round up in dividing by 2 for odd-numbered grids or weird pad factors 
-	nufft->pady = floor(((pad_factor-1.0)*ny+1)/2);
-	nufft->nx_pad = nx+2*nufft->padx;
-	nufft->ny_pad = ny+2*nufft->pady;
-	nufft->half_ny_pad = nufft->ny_pad/2+1; 
-	nufft->pad_factor = pad_factor;
-
-	// cell sizes and center point
-	// assumes input dimensions are in arcsec
-	// converts to radians for internal use
-	nufft->xmin = xmin*ARCSEC_TO_RADIANS; 
-	nufft->xmax = xmax*ARCSEC_TO_RADIANS; 
-	nufft->ymin = ymin*ARCSEC_TO_RADIANS; 
-	nufft->ymax = ymax*ARCSEC_TO_RADIANS; 
-	nufft->dx = (xmax-xmin)/nx*ARCSEC_TO_RADIANS; 
-	nufft->dy = (ymax-ymin)/ny*ARCSEC_TO_RADIANS; 
-	nufft->du = 1.0/(nufft->dx*nufft->nx_pad); 
-	nufft->dv = 1.0/(nufft->dy*nufft->ny_pad); 
-
-	// set up uv info
-	nufft->nchannels = nch;
-	nufft->nstokes = nstokes;
-	nufft->nrows = nrows;
-	nufft->uv = uv;
-	nufft->channels = channels;
-
-	// set up kernel parameters
-	nufft->wsup = kernel_support;
-	nufft->kb_beta = kb_optimal_beta(nufft->pad_factor, nufft->wsup);
-
-}
-
-
 
 
 //#ifndef GPU
-void grid_cpu(nufft_pars *nufft, double *vis, double *grid, int direction) {
+void grid_cpu(visibility_space visspace, double *vis, fourier_space gspace, double *grid, 
+		int wsup, double kb_beta, int direction) {
 
 	int i, flatidx, visidx, loopidx_u, loopidx_v, i_u, i_v, ngp_u, ngp_v;
 	int ch_vis, ch_grid, st_vis, st_grid, stokes;
 	double u_tmp, v_tmp, cwgt_re, cwgt_im, kernel, pcenter;
 	double tmp_re, tmp_im, cosp, sinp;
-	double du = nufft->du;
-	double dv = nufft->dv;
-	double ccx = 0.5*(nufft->xmin+nufft->xmax);
-	double ccy = 0.5*(nufft->ymin+nufft->ymax);
 
-	for(ch_vis = 0, ch_grid = 0; ch_vis < nufft->nchannels; ++ch_vis) {
+	for(ch_vis = 0, ch_grid = 0; ch_vis < visspace.nchannels; ++ch_vis) {
 	//for(st_vis = 0, st_grid = 0; st_vis < nufft->nstokes; ++st_vis) { // TODO
 		stokes = 0;
 
 #pragma omp parallel for private(i,u_tmp,v_tmp,cosp,sinp,tmp_re,tmp_im,\
 		ngp_u,ngp_v,loopidx_u,loopidx_v,i_u,i_v,kernel,pcenter,cwgt_re,cwgt_im,flatidx,visidx) 
-		for(i = 0; i < nufft->nrows; ++i) {
+		for(i = 0; i < visspace.nrows; ++i) {
 
 			// loop over the local uv grid with the gridding kernel
 			// process nufft->wsup points on each side of the NGP
-			u_tmp = nufft->uv[3*i+0]*nufft->channels[ch_vis];
-			v_tmp = -nufft->uv[3*i+1]*nufft->channels[ch_vis];
+			u_tmp = visspace.uv[3*i+0]*visspace.channels[ch_vis];
+			v_tmp = -visspace.uv[3*i+1]*visspace.channels[ch_vis];
 			//double w_tmp = nufft->uv[3*i+2]*nufft->channels[ch_vis];
-			cosp = cos(TWO_PI*(u_tmp*ccx + v_tmp*ccy));
-			sinp = sin(TWO_PI*(u_tmp*ccx + v_tmp*ccy));
-			ngp_u = round(u_tmp/nufft->du);
-			ngp_v = round(v_tmp/nufft->dv);
-			for(loopidx_u = ngp_u - nufft->wsup; loopidx_u <= ngp_u + nufft->wsup; ++loopidx_u)
-			for(loopidx_v = ngp_v - nufft->wsup; loopidx_v <= ngp_v + nufft->wsup; ++loopidx_v) {
+			cosp = cos(TWO_PI*(u_tmp*gspace.gcx + v_tmp*gspace.gcy));
+			sinp = sin(TWO_PI*(u_tmp*gspace.gcx + v_tmp*gspace.gcy));
+			ngp_u = round(u_tmp/gspace.du);
+			ngp_v = round(v_tmp/gspace.dv);
+			for(loopidx_u = ngp_u - wsup; loopidx_u <= ngp_u + wsup; ++loopidx_u)
+			for(loopidx_v = ngp_v - wsup; loopidx_v <= ngp_v + wsup; ++loopidx_v) {
 
 				// kernel and weights 
 				// Also factor to center phases so that (0,0) 
@@ -269,27 +227,27 @@ void grid_cpu(nufft_pars *nufft, double *vis, double *grid, int direction) {
 				// when forming cos() from exp(i*...) 
 				i_u = loopidx_u;
 				i_v = loopidx_v;
-				kernel = kb_g((u_tmp/du-i_u), (v_tmp/dv-i_v), nufft->kb_beta, nufft->wsup);
+				kernel = kb_g(u_tmp/gspace.du-i_u, v_tmp/gspace.dv-i_v, kb_beta, wsup);
 				pcenter = 1-2*((i_u+i_v)&1);
 				cwgt_re = 0.5*kernel*pcenter; 
 				cwgt_im = 0.5*kernel*pcenter; 
 
 				// Wrap. Beware of aliasing, the de-apodization kernel does not like it 
-				while(i_u < 0) i_u += nufft->nx_pad; 
-				while(i_v < 0) i_v += nufft->ny_pad; 
-				while(i_u >= nufft->nx_pad) i_u -= nufft->nx_pad;
-				while(i_v >= nufft->ny_pad) i_v -= nufft->ny_pad;
+				while(i_u < 0) i_u += gspace.nu; 
+				while(i_v < 0) i_v += gspace.nv; 
+				while(i_u >= gspace.nu) i_u -= gspace.nu;
+				while(i_v >= gspace.nv) i_v -= gspace.nv;
 
 				// fold since we are using the r2c transform
-				if(i_v >= nufft->half_ny_pad) {
-					i_u = (nufft->nx_pad - i_u) % nufft->nx_pad; // modulo to preserve i_u = 0
-					i_v = nufft->ny_pad - i_v; 
+				if(i_v >= gspace.half_nv) {
+					i_u = (gspace.nu - i_u) % gspace.nu; // modulo to preserve i_u = 0
+					i_v = gspace.nv - i_v; 
 					cwgt_im *= -1;
 				} 
 
 				// we have the weights, now grid or de-grid
-				flatidx = nufft->half_ny_pad*i_u + i_v; // TODO: properly index with multiple channels/stokes
-				visidx = nufft->nrows*nufft->nchannels*stokes+nufft->nrows*ch_vis+i;
+				flatidx = gspace.half_nv*i_u + i_v; // TODO: properly index with multiple channels/stokes
+				visidx = visspace.nrows*visspace.nchannels*stokes+visspace.nrows*ch_vis+i;
 				if(direction == FORWARD) {
 					tmp_re = cwgt_re*grid[2*flatidx+0];
 					tmp_im = cwgt_im*grid[2*flatidx+1];
@@ -300,8 +258,7 @@ void grid_cpu(nufft_pars *nufft, double *vis, double *grid, int direction) {
 				}
 				else if(direction == ADJOINT) {
 					if(i_v == 0) {
-						// Needed for the r2c transform, only in the adjoint direction
-						// TODO: why??
+						// Needed for the r2c transform, only in the adjoint direction, why??
 						cwgt_re *= 2;
 						cwgt_im *= 2;
 					}

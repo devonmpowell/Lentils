@@ -48,7 +48,7 @@ class SolverTests(TestCase):
         #print("Logdet (PC) =", cholpc.logdet())
         lhs_op = linalg.LinearOperator((src_space.size,src_space.size), matvec=lhs.apply)
         pc = linalg.LinearOperator((src_space.size, src_space.size), lu.solve)
-        sol_cg, info = linalg.cg(lhs_op, rhs, tol=1.0e-10, atol=1.0e-14, M=pc)
+        sol_cg, info = linalg.cg(lhs_op, rhs.flatten(), tol=1.0e-10, atol=1.0e-14, M=pc)
         err_max = max_relative_error(lhs*sol_cg, rhs)
         self.assertLess(err_max, errtol) 
 
@@ -56,7 +56,7 @@ class SolverTests(TestCase):
         # TODO: lhs._mat !
         lu = linalg.splu(reg_op._mat + lensop._mat.T @ psfop._mat.T @ covop._mat @ psfop._mat @ lensop._mat)
         #print("Logdet (direct) =", chol.logdet())
-        sol_direct = lu.solve(rhs)
+        sol_direct = lu.solve(rhs.flatten())
         err_max = max_relative_error(sol_cg, sol_direct)
         self.assertLess(err_max, errtol) 
 
@@ -107,7 +107,7 @@ class SolverTests(TestCase):
         #print("Logdet (PC) =", logdet(lu))
         lhs_op = linalg.LinearOperator((src_space.size,src_space.size), matvec=lhs.apply)
         pc = linalg.LinearOperator((src_space.size, src_space.size), lu.solve)
-        sol_cg, info = linalg.cg(lhs_op, rhs, tol=1.0e-10, atol=1.0e-14, M=pc)
+        sol_cg, info = linalg.cg(lhs_op, rhs.flatten(), tol=1.0e-10, atol=1.0e-14, M=pc)
         err_max = max_relative_error(lhs*sol_cg, rhs)
         self.assertLess(err_max, errtol) 
 
@@ -119,7 +119,7 @@ class SolverTests(TestCase):
         lhs = response.T * uvdata.covariance_operator_dft._mat * response + reg_op._mat
         lu = linalg.splu(lhs)
         #print("Logdet (Exact) =", logdet(lu))
-        sol_dft = lu.solve(rhs)
+        sol_dft = lu.solve(rhs.flatten())
         err_max = max_relative_error(sol_cg, sol_dft)
         self.assertLess(err_max, errtol) 
 

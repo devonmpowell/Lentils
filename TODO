@@ -1,6 +1,12 @@
 
 - Mask in convolution matrix
 
+- Test BCB convolution for odd-size grid
+
+- Make space data shape vs. pixel shape cleaner! (or just keep track better)
+
+- Move misc operators and CSR matrices to their own files
+
 - Joint modeling of multiple data sets!!!
 
 - dtype as part of Space superclass
@@ -20,8 +26,6 @@
 - Re-organize sub-modules ('spaces', 'util'?)
 
 - Broadcasting to full data shape, including channels and stokes
-
-- Get rid of space names...
 
 - Use 2F1 series for all deflection computations
 

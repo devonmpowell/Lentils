@@ -90,9 +90,10 @@ class RadioDataset(Dataset):
         except AttributeError:
             fft = self.nufft_operator.fft
             zpad = self.nufft_operator.zpad
+            pspace = self.nufft_operator.padded_space
             zpfft = fft*zpad
             db = self.dirty_beam
-            db = np.roll(db,[db.shape[0]//2,db.shape[1]//2],axis=[0,1])
+            db = np.roll(db,[pspace.nx//2,pspace.ny//2],axis=[-2,-1])
             dbfft = fft*db/np.product(db.shape)
             dbop = DiagonalOperator(fft.space_left, dbfft)
             self._fcf = CompositeOperatorProduct([zpfft.T, dbop, zpfft])
@@ -121,16 +122,17 @@ class RadioDataset(Dataset):
         try:
             return self._dirty_beam
         except AttributeError:
-            # TODO: use NUFFT padded space dimensions
+            # TODO: use NUFFT padded space dimensions?
+            # May be necessary for BCB on odd-size grids
             #padded = self.nufft_operator.padded_space
             #nx = padded._shape[0]
             #ny = padded._shape[1]
             #rx = 0.5*(padded._bounds[1,0]-padded._bounds[0,0]) 
             #ry = 0.5*(padded._bounds[1,1]-padded._bounds[0,1]) 
-            nx = 2*self.image_space._shape[0]
-            ny = 2*self.image_space._shape[1]
-            rx = self.image_space._dx[0]*self.image_space._shape[0]
-            ry = self.image_space._dx[1]*self.image_space._shape[1]
+            nx = 2*self.image_space.nx
+            ny = 2*self.image_space.ny
+            rx = self.image_space.dx*self.image_space.nx
+            ry = self.image_space.dx*self.image_space.ny
             self._space_beam = ImageSpace(shape=(nx,ny), bounds=[(-rx,rx), (-ry,ry)])
             self._nufft_beam = NUFFTOperator(self.space, self._space_beam)
             ones = self.space.new_vector(1.0+0.0j) 
