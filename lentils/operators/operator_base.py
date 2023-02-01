@@ -9,7 +9,6 @@ import numpy as np
 from astropy.convolution import convolve, convolve_fft
 from scipy import sparse
 from copy import copy
-from astropy.io import fits
 
 
 from lentils.common import Space, VisibilitySpace, FourierSpace, ImageSpace, DelaunaySpace 
@@ -184,62 +183,6 @@ class CompositeOperatorSum(Operator):
         for op in self.subops[1:]:
             out += op * vec
         return out 
-
-
-# base class for lens operator types
-class ConvolutionOperator(Operator):
-
-    def __init__(self, image_space, fitsfile=None, kerneldata=None, kernelsize=None, fwhm=0.1, fft=False, **superargs):
-
-        if not isinstance(image_space, ImageSpace): 
-            raise ValueError("image_space must be of type ImageSpace")
-
-        # load the kernel image
-        if fitsfile is not None:
-            with fits.open(fitsfile) as f:
-                data = f['PRIMARY'].data[:,:].T
-        elif kerneldata is not None:
-            data = kerneldata
-        else:
-            raise NotImplementedError("Need to put in generic Gaussian kernel")
-
-        # crop the kernel if desired
-        if kernelsize is not None and kernelsize > 0:
-            padi = (data.shape[0]-kernelsize)//2
-            padj = (data.shape[1]-kernelsize)//2
-            kernel = data[padi:padi+kernelsize,padj:padj+kernelsize]
-        else:
-            kernel = data
-        self._kernel = kernel.astype(np.float64, order='C')
-        self._kernelsize = self._kernel.shape
-
-        # normalize the kernel
-        self._kernel /= np.sum(self._kernel)
-
-        # make a matrix instead of fft (for small kernels)
-        if not fft:
-            nnz_per_row = np.product(self._kernelsize)
-            nrows = np.product(image_space.shape)
-            row_inds = np.zeros(nrows+1, dtype=np.int32) 
-            cols = np.zeros(nrows*nnz_per_row, dtype=np.int32) 
-            vals = np.zeros(nrows*nnz_per_row, dtype=np.float64) 
-            libnufft.convolution_matrix_csr(image_space,
-                    self._kernel.shape[-2], self._kernel.shape[-1], self._kernel, 
-                    row_inds, cols, vals)
-            self._mat = sparse.csr_matrix((vals,cols,row_inds), shape=(nrows,nrows))
-
-        # finish up and pass along supers
-        super().__init__(image_space, image_space)
-
-    # TODO: channel-dependent PSF?
-    def _matrixfree_forward(self, vec):
-        # TODO: normalization?
-        norm = 1.0 # np.product(self.space_right._dx)
-        return norm**-2 * convolve_fft(vec, self._kernel, boundary='fill', fill_value=0.0) 
-
-    def _matrixfree_transpose(self, vec):
-        # TODO: is this correct?
-        return convolve_fft(vec, self._kernel[::-1,::-1].copy(order='C'), boundary='fill', fill_value=0.0)
 
 
 class DiagonalOperator(Operator):

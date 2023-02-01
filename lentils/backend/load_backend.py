@@ -115,5 +115,10 @@ libraster.rasterize_triangle.restype = None
 libraster.rasterize_triangle.argtypes = [arg_c_double_p, arg_c_double_p, c_int, c_int, c_double, c_double, c_double, c_double, arg_c_double_p]
 
 
+#libraster.manifold_lens_matrix_csr.restype = None
+#libraster.manifold_lens_matrix_csr.argtypes = [image_space_ctype, image_space_ctype, c_int, 
+        #arg_c_int_p, arg_c_int_p, arg_c_double_p]
+
+
 
 

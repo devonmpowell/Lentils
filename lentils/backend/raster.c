@@ -230,16 +230,17 @@ void rasterize_triangle(double *verts_in, double *deriv_in, int nx, int ny, doub
 
 
 
-void manifold_lens_matrix_csr(int im_nx, int im_ny, int ncast, char *mask, 
-		double *uncasted_points, int *uncasted_tri_inds, double *casted_points, int *all_tri_inds, 
+#if 0
+void manifold_lens_matrix_csr(image_space imspace, image_space srcspace, int ncasted, 
 		int *row_inds, int *cols, double *vals) {
 
 	int row, i, iim, jim, v, cast_idx, uncast_idx, tind, p[3];
 	double atmp, stmp[2], pos_tmp[6], weights[3];
-	for(iim = 0, i = 0, row = 0, cast_idx = 0, uncast_idx = 0; iim < im_nx; ++iim)
-	for(jim = 0; jim < im_ny; ++jim, ++row) {
+
+	for(iim = 0, i = 0, row = 0; iim < imspace.nx; ++iim)
+	for(jim = 0; jim < imspace.ny; ++jim, ++row) {
 		row_inds[row] = i;
-		if(!mask[row]) continue;
+		if(!imspace.mask[row]) continue;
 		if(iim%ncast || jim%ncast) {
 			// uncasted points
 			stmp[0] = uncasted_points[2*uncast_idx+0];
@@ -267,5 +268,6 @@ void manifold_lens_matrix_csr(int im_nx, int im_ny, int ncast, char *mask,
 	row_inds[row] = i;
 }
 
+#endif
 
 
