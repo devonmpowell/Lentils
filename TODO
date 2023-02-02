@@ -1,7 +1,4 @@
 
-- Check whether convolution matrix is actually transposed?
-
-- Write a unit test for the convolution operator: forward vs. transposed and FFT
 
 - Test BCB convolution for odd-size grid
 

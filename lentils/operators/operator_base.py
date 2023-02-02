@@ -6,7 +6,6 @@ Note: This skeleton file can be safely removed if not needed!
 """
 
 import numpy as np
-from astropy.convolution import convolve, convolve_fft
 from scipy import sparse
 from copy import copy
 
@@ -48,10 +47,6 @@ def broadcast(func):
 class Operator:
 
     def __init__(self, space_left, space_right):
-        if not isinstance(space_left, Space):
-            raise ValueError("space_left must be a Space")
-        if not isinstance(space_right, Space):
-            raise ValueError("space_right must be a Space")
         self.space_right = space_right
         self.space_left = space_left
 
@@ -126,8 +121,6 @@ class CompositeOperatorProduct(Operator):
         # concatenate sub-operators
         self.subops = []
         for op in oplist:
-            if not isinstance(op, Operator):
-                raise TypeError("Composite operator needs a list of only Operators")
             if isinstance(op, CompositeOperatorProduct):
                 self.subops += op.subops
             else:
@@ -158,8 +151,6 @@ class CompositeOperatorSum(Operator):
         # concatenate sub-operators
         self.subops = []
         for op in oplist:
-            if not isinstance(op, Operator):
-                raise TypeError("Composite operator needs a list of only Operators")
             if isinstance(op, CompositeOperatorSum):
                 self.subops += op.subops
             else:

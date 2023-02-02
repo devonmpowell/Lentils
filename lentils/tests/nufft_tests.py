@@ -4,11 +4,41 @@ import numpy as np
 import astropy.io.fits as fits 
 from .test_utils import testpath, errtol, max_relative_error 
 from lentils.common import VisibilitySpace, ImageSpace, RadioDataset 
-from lentils.operators import NUFFTOperator, DFTOperator
+from lentils.operators import NUFFTOperator, DFTOperator, ConvolutionOperator
 
-from .test_utils import plt, imargs
 
 class NUFFTTests(TestCase):
+
+    def test_convolution(self):
+        
+        imspace = ImageSpace(shape=[127,129])
+        delta = imspace.new_vector()
+        delta[0,0,50,40] = 1.0
+        delta[0,0,100,50] = 1.0
+        delta[0,0,70,100] = 0.5
+        delta[0,0,60,1] = 1.0
+        delta[0,0,125,50] = 1.0
+        delta[0,0,64,63] = 0.8
+        delta[0,0,2,50] = 1.5
+        delta[0,0,80,126] = 1.0
+
+        for ksize in [32, 33]:
+
+            conv_mat = ConvolutionOperator(imspace, fitsfile=f'{testpath}/data_misc/arrow{ksize}.fits', fft=False)
+            conv_fft = ConvolutionOperator(imspace, fitsfile=f'{testpath}/data_misc/arrow{ksize}.fits', fft=True)
+    
+            # forward convolution
+            out_mat = conv_mat*delta
+            out_fft = conv_fft*delta
+            err_max = max_relative_error(out_mat, out_fft)
+            self.assertLess(err_max, errtol) 
+    
+            # transpose direction
+            out_mat_t = conv_mat.T*out_mat
+            out_fft_t = conv_fft.T*out_mat
+            err_max = max_relative_error(out_mat_t, out_fft_t)
+            self.assertLess(err_max, errtol) 
+
 
     def test_gridder_and_apodization(self):
 

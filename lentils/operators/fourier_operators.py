@@ -2,6 +2,7 @@
 
 import numpy as np
 from scipy import sparse, fft
+from scipy.signal import fftconvolve
 from astropy.io import fits
 from lentils.operators import Operator, CompositeOperatorProduct, DiagonalOperator
 from lentils.common import VisibilitySpace, FourierSpace, ImageSpace
@@ -148,8 +149,7 @@ class ConvolutionOperator(Operator):
 
     def __init__(self, image_space, fitsfile=None, kerneldata=None, kernelsize=None, fwhm=0.1, fft=False, **superargs):
 
-        if not isinstance(image_space, ImageSpace): 
-            raise ValueError("image_space must be of type ImageSpace")
+        # TODO: channel-dependent PSF?
 
         # load the kernel image
         if fitsfile is not None:
@@ -167,35 +167,41 @@ class ConvolutionOperator(Operator):
             kernel = data[padi:padi+kernelsize,padj:padj+kernelsize]
         else:
             kernel = data
-        self._kernel = kernel.astype(np.float64, order='C')
-        self._kernelsize = self._kernel.shape
+
+        # make the kernel odd-dimensioned so that the center pixel
+        # is unambiguous to both the matrix and FFT operations
+        padlist = len(kernel.shape)*[[0,0],]
+        padlist[-2][1] = int(kernel.shape[-2]%2 == 0)
+        padlist[-1][1] = int(kernel.shape[-1]%2 == 0)
+        kernel = np.pad(kernel, padlist, 'constant')
+        self.kernel = kernel.astype(np.float64, order='C')
+        self.kernelsize = self.kernel.shape
 
         # normalize the kernel
-        self._kernel /= np.sum(self._kernel)
+        self.kernel /= np.sum(self.kernel)
 
-        # make a matrix instead of fft (for small kernels)
-        if not fft:
-            nnz_per_row = np.product(self._kernelsize)
+        # make a transpose kernel, or an explicit matrix
+        if fft:
+            # TODO: store the kernel FFT for faster convolutions?
+            self.kernel_transpose = self.kernel[::-1,::-1].copy(order='C')
+        else:
+            nnz_per_row = np.product(self.kernelsize)
             nrows = np.product(image_space.shape)
             row_inds = np.zeros(nrows+1, dtype=np.int32) 
             cols = np.zeros(nrows*nnz_per_row, dtype=np.int32) 
             vals = np.zeros(nrows*nnz_per_row, dtype=np.float64) 
             libnufft.convolution_matrix_csr(image_space,
-                    self._kernel.shape[-2], self._kernel.shape[-1], self._kernel, 
+                    self.kernel.shape[-2], self.kernel.shape[-1], self.kernel, 
                     row_inds, cols, vals)
             self._mat = sparse.csr_matrix((vals,cols,row_inds), shape=(nrows,nrows))
 
         # finish up and pass along supers
         super().__init__(image_space, image_space)
 
-    # TODO: channel-dependent PSF?
     def _matrixfree_forward(self, vec):
-        # TODO: normalization?
-        norm = 1.0 # np.product(self.space_right._dx)
-        return norm**-2 * convolve_fft(vec, self._kernel, boundary='fill', fill_value=0.0) 
+        return fftconvolve(vec[0,0], self.kernel, mode='same') 
 
     def _matrixfree_transpose(self, vec):
-        # TODO: is this correct?
-        return convolve_fft(vec, self._kernel[::-1,::-1].copy(order='C'), boundary='fill', fill_value=0.0)
+        return fftconvolve(vec[0,0], self.kernel_transpose, mode='same')
 
 

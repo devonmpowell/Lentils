@@ -128,21 +128,20 @@ void convolution_matrix_csr(image_space imspace, int k_nx, int k_ny, double *ker
 		int *row_inds, int *cols, double *vals) {
 
 	int row, col, i, iim, jim, ik, jk, icc, jcc;
-	int k_xmid = (k_nx+1)/2;
-	int k_ymid = (k_ny+1)/2;
+	int k_xmid = k_nx/2;
+	int k_ymid = k_ny/2;
 	for(iim = 0, i = 0, row = 0; iim < imspace.nx; ++iim)
 	for(jim = 0; jim < imspace.ny; ++jim, ++row) {
 		row_inds[row] = i;
 		for(ik = 0; ik < k_nx; ++ik)
 		for(jk = 0; jk < k_ny; ++jk) {
-			icc = iim + ik - k_xmid;
-			jcc = jim + jk - k_ymid;
+			// flip the kernel so that it is not transposed
+			icc = iim + k_xmid - ik;
+			jcc = jim + k_ymid - jk;
 			col = imspace.ny*icc + jcc;
 			if(icc < 0 || icc >= imspace.nx) continue;
 			if(jcc < 0 || jcc >= imspace.ny) continue;
 			if(!imspace.mask[col]) continue;
-
-			// TODO: check to see if we need to transpose the kernel??
 			vals[i] = kernel[k_ny*ik+jk]; 
 			cols[i] = col;
 			i++;
