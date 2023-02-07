@@ -39,37 +39,6 @@ class ManifoldLensOperator(LensOperator):
         # finish up and pass along supers
         super().__init__(image_space, source_space, lensmodel)
 
-    
-    def rasterize(self, triangles):
-
-        source_space = self.space_right
-        rastered = source_space.new_vector()
-        b = source_space._bounds.flatten()
-        libraster.rasterize_triangle(
-                triangles, None, source_space.shape[0], source_space.shape[1], 
-                b[0], b[1], b[2], b[3], rastered)
-        return rastered 
-
-    def _matrixfree_forward(self, vec):
-        out = self.space_left.new_vector()
-        out_masked = out[self._image_mask]
-        out_masked[self._casted_inds] = vec
-        out_masked[self._uncasted_inds] = np.sum(self._uncasted_weights*vec[self._uncasted_tris], axis=-1)
-        out[self._image_mask] = out_masked
-        return out
-
-    def _matrixfree_transpose(self, vec):
-        #print('Lensop adjoint shape =', vec.shape)
-        #out = vec[self._image_mask][self._casted_inds]
-        out = vec[self._image_mask][self._casted_inds]
-        #out = vec[self._image_mask][self._casted_inds]
-        #out_masked = out[self._image_mask]
-        #out_masked[self._casted_inds] = vec
-        #out_masked[self._uncasted_inds] = np.sum(self._uncasted_weights*vec[self._uncasted_tris], axis=-1)
-        #out[self._image_mask] = out_masked
-        return out
-
-
 
 
 # Vegetti and Koopmans delaunay tessellation

@@ -31,24 +31,24 @@ class ZeroPaddingOperator(Operator):
         # compute symmetric padding on both sides
         # rounding up for odd nx, ny
         self.pad_factor = int(pad_factor)
-        padx = ((self.pad_factor-1)*image_space.nx+1)//2
-        pady = ((self.pad_factor-1)*image_space.ny+1)//2
-        shape = (image_space.nx+2*padx, image_space.ny+2*pady)
+        self.padx = ((self.pad_factor-1)*image_space.nx+1)//2
+        self.pady = ((self.pad_factor-1)*image_space.ny+1)//2
+        shape = (image_space.nx+2*self.padx, image_space.ny+2*self.pady)
         dx, dy = image_space.dx, image_space.dy
         bounds = image_space.bounds.copy()
-        bounds += np.array([-padx*dx, padx*dx, -pady*dy, pady*dy])
+        bounds += np.array([-self.padx*dx, self.padx*dx, -self.pady*dy, self.pady*dy])
         padded_space = ImageSpace(shape=shape, bounds=bounds, 
                 channels=image_space.channels, mask=None)
         super().__init__(padded_space, image_space)
         
     def _matrixfree_forward(self, vec):
         out = self.space_left.new_vector()
-        libnufft.zero_pad(self.space_right, vec, self.space_left, out, 0) 
+        out[...,self.padx:-self.padx,self.pady:-self.pady] = vec[...,:,:]
         return out
 
     def _matrixfree_transpose(self, vec):
         out = self.space_left.new_vector()
-        libnufft.zero_pad(self.space_left, out, self.space_right, vec, 1) 
+        out[...,:,:] = vec[...,self.padx:-self.padx,self.pady:-self.pady]
         return out
 
 class ApodizationCorrectionOperator(DiagonalOperator):

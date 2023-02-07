@@ -38,51 +38,89 @@ double kb_optimal_beta(double padfac, double wsup) {
 }
 
 
-void zero_pad(image_space imspace, double *image, image_space padspace, double *padded, int direction) {
+//#ifndef GPU
+void grid_cpu(visibility_space visspace, double *vis, fourier_space gspace, double *grid, 
+		int wsup, double kb_beta, int direction) {
 
-	int iim, jim, idxim, idxpad;
-	int padx = (padspace.nx-imspace.nx)/2;
-	int pady = (padspace.ny-imspace.ny)/2;
-	if(direction == FORWARD) {
-		memset(padded, 0, padspace.nx*padspace.ny*sizeof(double));
-	}
-	for(iim = 0; iim < imspace.nx; ++iim)
-	for(jim = 0; jim < imspace.ny; ++jim) {
-		idxim = imspace.ny*iim + jim;
-		idxpad = padspace.ny*(padx+iim) + (pady+jim);
-		if(direction == FORWARD) {
-			padded[idxpad] = image[idxim];
-		}
-		else if(direction == ADJOINT) {
-			image[idxim] = padded[idxpad];
+	int i, flatidx, visidx, loopidx_u, loopidx_v, i_u, i_v, ngp_u, ngp_v;
+	int ch_vis, ch_grid, st_vis, st_grid, stokes;
+	double u_tmp, v_tmp, cwgt_re, cwgt_im, kernel, pcenter;
+	double tmp_re, tmp_im, cosp, sinp;
+
+	for(ch_vis = 0, ch_grid = 0; ch_vis < visspace.nchannels; ++ch_vis) {
+	//for(st_vis = 0, st_grid = 0; st_vis < nufft->nstokes; ++st_vis) { // TODO
+		stokes = 0;
+
+#pragma omp parallel for private(i,u_tmp,v_tmp,cosp,sinp,tmp_re,tmp_im,\
+		ngp_u,ngp_v,loopidx_u,loopidx_v,i_u,i_v,kernel,pcenter,cwgt_re,cwgt_im,flatidx,visidx) 
+		for(i = 0; i < visspace.nrows; ++i) {
+
+			// loop over the local uv grid with the gridding kernel
+			// process nufft->wsup points on each side of the NGP
+			u_tmp = visspace.uv[3*i+0]*visspace.channels[ch_vis];
+			v_tmp = -visspace.uv[3*i+1]*visspace.channels[ch_vis];
+			//double w_tmp = nufft->uv[3*i+2]*nufft->channels[ch_vis];
+			cosp = cos(TWO_PI*(u_tmp*gspace.gcx + v_tmp*gspace.gcy));
+			sinp = sin(TWO_PI*(u_tmp*gspace.gcx + v_tmp*gspace.gcy));
+			ngp_u = round(u_tmp/gspace.du);
+			ngp_v = round(v_tmp/gspace.dv);
+			for(loopidx_u = ngp_u - wsup; loopidx_u <= ngp_u + wsup; ++loopidx_u)
+			for(loopidx_v = ngp_v - wsup; loopidx_v <= ngp_v + wsup; ++loopidx_v) {
+
+				// kernel and weights 
+				// Also factor to center phases so that (0,0) 
+				// is in the middle, rather than the corner
+				// Use a factor of 0.5 so that we don't double-count 
+				// when forming cos() from exp(i*...) 
+				i_u = loopidx_u;
+				i_v = loopidx_v;
+				kernel = kb_g(u_tmp/gspace.du-i_u, v_tmp/gspace.dv-i_v, kb_beta, wsup);
+				pcenter = 1-2*((i_u+i_v)&1);
+				cwgt_re = 0.5*kernel*pcenter; 
+				cwgt_im = 0.5*kernel*pcenter; 
+
+				// Wrap. Beware of aliasing, the de-apodization kernel does not like it 
+				while(i_u < 0) i_u += gspace.nu; 
+				while(i_v < 0) i_v += gspace.nv; 
+				while(i_u >= gspace.nu) i_u -= gspace.nu;
+				while(i_v >= gspace.nv) i_v -= gspace.nv;
+
+				// fold since we are using the r2c transform
+				if(i_v >= gspace.half_nv) {
+					i_u = (gspace.nu - i_u) % gspace.nu; // modulo to preserve i_u = 0
+					i_v = gspace.nv - i_v; 
+					cwgt_im *= -1;
+				} 
+
+				// we have the weights, now grid or de-grid
+				flatidx = gspace.half_nv*i_u + i_v; // TODO: properly index with multiple channels/stokes
+				visidx = visspace.nrows*visspace.nchannels*stokes+visspace.nrows*ch_vis+i;
+				if(direction == FORWARD) {
+					tmp_re = cwgt_re*grid[2*flatidx+0];
+					tmp_im = cwgt_im*grid[2*flatidx+1];
+#pragma omp atomic
+					vis[2*visidx+0] += 2*(cosp*tmp_re + sinp*tmp_im);
+#pragma omp atomic
+					vis[2*visidx+1] += 2*(-sinp*tmp_re + cosp*tmp_im);
+				}
+				else if(direction == ADJOINT) {
+					if(i_v == 0) {
+						// Needed for the r2c transform, only in the adjoint direction, why??
+						cwgt_re *= 2;
+						cwgt_im *= 2;
+					}
+					tmp_re = vis[2*visidx+0];
+					tmp_im = vis[2*visidx+1];
+#pragma omp atomic
+					grid[2*flatidx+0] += cwgt_re*(cosp*tmp_re - sinp*tmp_im);
+#pragma omp atomic
+					grid[2*flatidx+1] += cwgt_im*(sinp*tmp_re + cosp*tmp_im);
+				}
+			}
 		}
 	}
 }
 
-
-#if 0
-void zpad_matrix_csr(image_space imspace, image_space padspace, int *row_inds, int *cols, double *vals) {
-
-	int iim, jim, idxim, idxpad;
-	int padx = (padspace.nx-imspace.nx)/2;
-	int pady = (padspace.ny-imspace.ny)/2;
-
-
-	//for(iim = 0; iim < imspace.nx; ++iim)
-	//for(jim = 0; jim < imspace.ny; ++jim) {
-		//idxim = imspace.ny*iim + jim;
-		//idxpad = padspace.ny*(padx+iim) + (pady+jim);
-		//if(direction == FORWARD) {
-			//padded[idxpad] = image[idxim];
-		//}
-		//else if(direction == ADJOINT) {
-			//image[idxim] = padded[idxpad];
-		//}
-	//}
-
-
-}
-#endif
 
 
 
@@ -220,88 +258,4 @@ void convolution_matrix_csr(image_space imspace, int k_nx, int k_ny, double *ker
 
 
 
-
-
-//#ifndef GPU
-void grid_cpu(visibility_space visspace, double *vis, fourier_space gspace, double *grid, 
-		int wsup, double kb_beta, int direction) {
-
-	int i, flatidx, visidx, loopidx_u, loopidx_v, i_u, i_v, ngp_u, ngp_v;
-	int ch_vis, ch_grid, st_vis, st_grid, stokes;
-	double u_tmp, v_tmp, cwgt_re, cwgt_im, kernel, pcenter;
-	double tmp_re, tmp_im, cosp, sinp;
-
-	for(ch_vis = 0, ch_grid = 0; ch_vis < visspace.nchannels; ++ch_vis) {
-	//for(st_vis = 0, st_grid = 0; st_vis < nufft->nstokes; ++st_vis) { // TODO
-		stokes = 0;
-
-#pragma omp parallel for private(i,u_tmp,v_tmp,cosp,sinp,tmp_re,tmp_im,\
-		ngp_u,ngp_v,loopidx_u,loopidx_v,i_u,i_v,kernel,pcenter,cwgt_re,cwgt_im,flatidx,visidx) 
-		for(i = 0; i < visspace.nrows; ++i) {
-
-			// loop over the local uv grid with the gridding kernel
-			// process nufft->wsup points on each side of the NGP
-			u_tmp = visspace.uv[3*i+0]*visspace.channels[ch_vis];
-			v_tmp = -visspace.uv[3*i+1]*visspace.channels[ch_vis];
-			//double w_tmp = nufft->uv[3*i+2]*nufft->channels[ch_vis];
-			cosp = cos(TWO_PI*(u_tmp*gspace.gcx + v_tmp*gspace.gcy));
-			sinp = sin(TWO_PI*(u_tmp*gspace.gcx + v_tmp*gspace.gcy));
-			ngp_u = round(u_tmp/gspace.du);
-			ngp_v = round(v_tmp/gspace.dv);
-			for(loopidx_u = ngp_u - wsup; loopidx_u <= ngp_u + wsup; ++loopidx_u)
-			for(loopidx_v = ngp_v - wsup; loopidx_v <= ngp_v + wsup; ++loopidx_v) {
-
-				// kernel and weights 
-				// Also factor to center phases so that (0,0) 
-				// is in the middle, rather than the corner
-				// Use a factor of 0.5 so that we don't double-count 
-				// when forming cos() from exp(i*...) 
-				i_u = loopidx_u;
-				i_v = loopidx_v;
-				kernel = kb_g(u_tmp/gspace.du-i_u, v_tmp/gspace.dv-i_v, kb_beta, wsup);
-				pcenter = 1-2*((i_u+i_v)&1);
-				cwgt_re = 0.5*kernel*pcenter; 
-				cwgt_im = 0.5*kernel*pcenter; 
-
-				// Wrap. Beware of aliasing, the de-apodization kernel does not like it 
-				while(i_u < 0) i_u += gspace.nu; 
-				while(i_v < 0) i_v += gspace.nv; 
-				while(i_u >= gspace.nu) i_u -= gspace.nu;
-				while(i_v >= gspace.nv) i_v -= gspace.nv;
-
-				// fold since we are using the r2c transform
-				if(i_v >= gspace.half_nv) {
-					i_u = (gspace.nu - i_u) % gspace.nu; // modulo to preserve i_u = 0
-					i_v = gspace.nv - i_v; 
-					cwgt_im *= -1;
-				} 
-
-				// we have the weights, now grid or de-grid
-				flatidx = gspace.half_nv*i_u + i_v; // TODO: properly index with multiple channels/stokes
-				visidx = visspace.nrows*visspace.nchannels*stokes+visspace.nrows*ch_vis+i;
-				if(direction == FORWARD) {
-					tmp_re = cwgt_re*grid[2*flatidx+0];
-					tmp_im = cwgt_im*grid[2*flatidx+1];
-#pragma omp atomic
-					vis[2*visidx+0] += 2*(cosp*tmp_re + sinp*tmp_im);
-#pragma omp atomic
-					vis[2*visidx+1] += 2*(-sinp*tmp_re + cosp*tmp_im);
-				}
-				else if(direction == ADJOINT) {
-					if(i_v == 0) {
-						// Needed for the r2c transform, only in the adjoint direction, why??
-						cwgt_re *= 2;
-						cwgt_im *= 2;
-					}
-					tmp_re = vis[2*visidx+0];
-					tmp_im = vis[2*visidx+1];
-#pragma omp atomic
-					grid[2*flatidx+0] += cwgt_re*(cosp*tmp_re - sinp*tmp_im);
-#pragma omp atomic
-					grid[2*flatidx+1] += cwgt_im*(sinp*tmp_re + cosp*tmp_im);
-				}
-			}
-		}
-	}
-}
 

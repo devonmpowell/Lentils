@@ -1,16 +1,14 @@
 
+- GPUs
 
 - Test BCB convolution for odd-size grid
 
-- Just use array slicing for the zpad operator
+- Concatenating explicit matrices
 
 - Make space data shape vs. pixel shape cleaner! (or just keep track better)
-
-- Move misc operators and CSR matrices to their own files
+- Broadcasting to full data shape, including channels and stokes
 
 - Joint modeling of multiple data sets!!!
-
-- dtype as part of Space superclass
 
 - Mask as part of VisibilitySpace
 
@@ -20,11 +18,10 @@
 
 - Clean up unit tests, split into more manageable files
 
-- Concatenating explicit matrices
 
 - Re-organize sub-modules ('spaces', 'util'?)
+- Move misc operators and CSR matrices to their own files
 
-- Broadcasting to full data shape, including channels and stokes
 
 - Use 2F1 series for all deflection computations
 

@@ -91,12 +91,7 @@ class c_nufft(Structure):
             ('wsup', c_double), ('kb_beta', c_double),]
 
 libnufft = ctypeslib.load_library('nufft', modulepath)
-libnufft.zero_pad.restype = None
-libnufft.zero_pad.argtypes = [image_space_ctype, arg_c_double_p, 
-        image_space_ctype, arg_c_double_p, c_int]
-#libtriangles.zpad_matrix_csr.restype = None
-#libtriangles.zpad_matrix_csr.argtypes = [image_space_ctype, image_space_ctype, 
-        #arg_c_int_p, arg_c_int_p, arg_c_double_p]
+
 libnufft.grid_cpu.restype = None
 libnufft.grid_cpu.argtypes = [visibility_space_ctype, arg_c_complex_p, 
         fourier_space_ctype, arg_c_complex_p, c_int, c_double, c_int]
@@ -113,11 +108,9 @@ libnufft.grad_matrix_findiff_csr.restype = None
 libnufft.grad_matrix_findiff_csr.argtypes = [image_space_ctype,
         arg_c_int_p, arg_c_int_p, arg_c_double_p]
 
-
 libnufft.curv_matrix_findiff_csr.restype = None
 libnufft.curv_matrix_findiff_csr.argtypes = [image_space_ctype,
         arg_c_int_p, arg_c_int_p, arg_c_double_p]
-
 
 
 
@@ -127,9 +120,6 @@ libnufft.curv_matrix_findiff_csr.argtypes = [image_space_ctype,
 ############################################################
 
 libraster = ctypeslib.load_library('raster', modulepath)
-#libraster.rasterize_triangle.restype = None
-#libraster.rasterize_triangle.argtypes = [arg_c_double_p, arg_c_double_p, c_int, c_int, c_double, c_double, c_double, c_double, arg_c_double_p]
-
 
 libraster.manifold_lens_matrix_csr.restype = None
 libraster.manifold_lens_matrix_csr.argtypes = [image_space_ctype, image_space_ctype, 
