@@ -20,7 +20,7 @@ class Dataset:
         self.space = space 
         self.data = data.astype(dtype)
         self.sigma = sigma.astype(np.float64) # we treat sigma as always real
-        self.mask = mask.astype(np.bool_) 
+        self.mask = mask
         self.dtype = dtype
 
     def __repr__(self):

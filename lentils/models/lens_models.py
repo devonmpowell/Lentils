@@ -7,10 +7,10 @@ import numpy as np
 import astropy.cosmology as cosmo
 import astropy.units as units
 import astropy.constants as const 
-from lentils.backend import libdeflect, generic_mass_model_ctype, c_null_p
+from lentils.backend import libdeflect, global_lens_model_ctype, generic_mass_model_ctype, c_void_p, c_null_p
 
 
-class GlobalLensModel:
+class GlobalLensModel(global_lens_model_ctype):
 
     def __init__(self, components=None, cosmology=cosmo.Planck15):
 
@@ -24,49 +24,57 @@ class GlobalLensModel:
     def add_component(self, component):
         self.components.append(component)
 
-
-    def deflect(self, points, z_s, deriv=False):
+    def setup_raytracing(self, z_s):
 
         # Collect all mass components
         # sort by z_l, filter to keep only z_l < z_s
-        all_cpars = np.zeros(len(self.components), dtype=generic_mass_model_ctype)
+        self.lenses = np.zeros(len(self.components), dtype=generic_mass_model_ctype)
         for i, comp in enumerate(self.components):
-            all_cpars[i] = comp.get_cpars()
-        all_cpars.sort(order='z_l')
-        all_cpars = all_cpars[all_cpars['z_l'] < z_s]
-        ncomp = len(all_cpars)
+            self.lenses[i] = comp.get_cpars()
+        self.lenses.sort(order='z_l')
+        self.lenses = self.lenses[self.lenses['z_l'] < z_s]
+        ncomp = len(self.lenses)
 
         # Compute angular diameter distances
         # assign c pars in more natural units for lensing 
         d_s = self.cosmology.angular_diameter_distance(z_s)
-        d_l = self.cosmology.angular_diameter_distance(all_cpars['z_l'])
-        d_ls = self.cosmology.angular_diameter_distance_z1z2(all_cpars['z_l'], z_s)
+        d_l = self.cosmology.angular_diameter_distance(self.lenses['z_l'])
+        d_ls = self.cosmology.angular_diameter_distance_z1z2(self.lenses['z_l'], z_s)
         sigma_c = ((const.c*const.c*d_s)/(4*np.pi*const.G*d_l*d_ls))
-        all_cpars['z_s'] = z_s
-        all_cpars['d_s'] = (d_s/units.radian).to('kpc/arcsec')
-        all_cpars['d_l'] = (d_l/units.radian).to('kpc/arcsec')
-        all_cpars['d_ls'] = (d_ls/units.radian).to('kpc/arcsec')
-        all_cpars['sigma_c'] = (sigma_c*(d_l/units.radian)**2).to('10^10 M_sun / arcsec^2')
+        self.lenses['z_s'] = z_s
+        self.lenses['d_s'] = (d_s/units.radian).to('kpc/arcsec')
+        self.lenses['d_l'] = (d_l/units.radian).to('kpc/arcsec')
+        self.lenses['d_ls'] = (d_ls/units.radian).to('kpc/arcsec')
+        self.lenses['sigma_c'] = (sigma_c*(d_l/units.radian)**2).to('10^10 M_sun / arcsec^2')
 
         # TODO: In the reconst code,
         # Lens 0 redshift = 0.350000, sigma_crit = 5.21746e+00 (10^10 M_sun arcsec^-2) 
 
-        # compute betas ?
-        for i, comp in enumerate(self.components):
-            pass
-        #print(all_cpars)
+        # TODO: compute betas 
+        #for i, comp in enumerate(self.components):
+            #pass
+        #print(self.lenses)
         #print("mass model size =", generic_mass_model_ctype.itemsize)
+
+        self.num_lenses = ncomp
+        self._c_lenses = self.lenses.ctypes.data_as(c_void_p)
+
+
+
+    def deflect(self, points, z_s, deriv=False):
+
+        self.setup_raytracing(z_s)
 
         # call deflect backend
         npoints = points.reshape((-1,2)).shape[0] 
         deflected = np.zeros_like(points)
         if deriv:
             gradients = np.zeros((8,)+points.shape)
-            libdeflect.deflect_points(all_cpars, ncomp, points, npoints, deflected, 1, gradients)
+            libdeflect.deflect_points(self, points, npoints, deflected, 1, gradients)
             return deflected, gradients
-
-        libdeflect.deflect_points(all_cpars, ncomp, points, npoints, deflected, 0, c_null_p);
-        return deflected
+        else:
+            libdeflect.deflect_points(self, points, npoints, deflected, 0, c_null_p);
+            return deflected
 
 
 class MassModel:

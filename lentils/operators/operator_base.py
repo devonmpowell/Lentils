@@ -9,7 +9,6 @@ import numpy as np
 from scipy import sparse
 from copy import copy
 
-
 from lentils.common import Space, VisibilitySpace, FourierSpace, ImageSpace, DelaunaySpace 
 from lentils.backend import libtriangles, libraster, libnufft
 
@@ -92,7 +91,7 @@ class Operator:
 
     def apply(self, other):
         if isinstance(other, np.ndarray):
-            if not broadcastable(self.space_right, other): 
+            if not broadcastable(self.space_right, other.reshape((-1,)+self.space_right.shape[-2:])): 
                 raise ValueError(f"Incompatible shapes! {self.space_right.shape}, {other.shape}")
             if self.has_matrix:
                 # TODO: Broadcasting! Slice the arrays properly rather than just assume flatten works
@@ -200,25 +199,54 @@ class DiagonalOperator(Operator):
 
 class PriorCovarianceOperator(Operator):
 
-    def __init__(self, space, type, strength, **superargs):
+    def __init__(self, space, type, strength, lambda_boundary=None, **superargs):
 
         # for triangle meshes
         if isinstance(space, DelaunaySpace): 
 
-            if type != 'gradient':
-                raise NotImplementedError("Only gradient regularization for now") 
+            if type == 'tikhonov':
+                self._op = sparse.spdiags(np.ones(space.size), 0, space.size, space.size)
+            elif type == 'gradient':
+                row_inds = np.zeros(2*space.num_triangles+1, dtype=np.int32) 
+                cols = np.zeros(3*2*space.num_triangles, dtype=np.int32) 
+                vals = np.zeros(3*2*space.num_triangles, dtype=np.float64) 
+                libtriangles.triangle_gradient_csr(space, row_inds, cols, vals)
+                self._op = sparse.csr_matrix((vals,cols,row_inds), shape=(2*space.num_triangles,space.size))
 
-            row_inds = np.zeros(2*space.num_triangles+1, dtype=np.int32) 
-            cols = np.zeros(3*2*space.num_triangles, dtype=np.int32) 
-            vals = np.zeros(3*2*space.num_triangles, dtype=np.float64) 
-            libtriangles.triangle_gradient_csr(space, row_inds, cols, vals)
-            self._op = sparse.csr_matrix((vals,cols,row_inds), shape=(2*space.num_triangles,space.size))
+            else:
+                raise NotImplementedError("Curvature regularization on triangles not yet implemented") 
+
+
+
+        elif isinstance(space, ImageSpace): 
+
+            if type == 'tikhonov':
+                self._op = sparse.spdiags(np.ones(space.size), 0, space.size, space.size)
+            elif type == 'gradient':
+                row_inds = np.zeros(2*space.size+1, dtype=np.int32) 
+                cols = np.zeros(2*2*space.size, dtype=np.int32) 
+                vals = np.zeros(2*2*space.size, dtype=np.float64) 
+                libnufft.grad_matrix_findiff_csr(space, row_inds, cols, vals)
+                self._op = sparse.csr_matrix((vals,cols,row_inds), shape=(2*space.size,space.size))
+            elif type == 'curvature':
+                row_inds = np.zeros(space.size+1, dtype=np.int32) 
+                cols = np.zeros(5*space.size, dtype=np.int32) 
+                vals = np.zeros(5*space.size, dtype=np.float64) 
+                libnufft.curv_matrix_findiff_csr(space, row_inds, cols, vals)
+                self._op = sparse.csr_matrix((vals,cols,row_inds), shape=(space.size,space.size))
 
         else:
-            raise NotImplementedError("PriorCovarianceOperator only implemented for Delaunay mesh")
+            raise NotImplementedError("PriorCovarianceOperator not implement for this space")
 
         self._lambda = strength
         self._mat = self._lambda*self._op.T.dot(self._op)
+
+        if isinstance(space, DelaunaySpace) and lambda_boundary is not None:
+            data = np.zeros(space.size)
+            data[space.edge] = strength*lambda_boundary
+            self._bry_op = sparse.spdiags(data, 0, space.size, space.size)
+            self._mat += self._bry_op
+
         self._transpose = self
         super().__init__(space, space)
 

@@ -3,7 +3,7 @@
 # This file imports the libraries and sets up ctypes function signatures for all C backends
 # Do not mess with it unless you know what you are doing!
 
-from ctypes import c_int, c_double, c_char, c_bool, POINTER, Structure
+from ctypes import c_int, c_double, c_char, c_bool, c_void_p, POINTER, Structure
 from numpy import ctypeslib
 import numpy as np
 from os.path import dirname, realpath
@@ -48,13 +48,17 @@ class visibility_space_ctype(Structure):
 # deflect.c: lens model deflection angles
 ############################################################
 
-generic_mass_model_ctype = np.dtype([('type','u8'),('z_l','f8'),('z_s','f8'),('d_l','f8'),('d_s','f8'),('d_ls','f8'),
+
+class global_lens_model_ctype(Structure):
+    _fields_ = [('num_lenses', c_int),('num_zplanes', c_int), ('_c_lenses', c_void_p)]
+
+generic_mass_model_ctype = np.dtype([('type','u4'),('_pad','u4'),('z_l','f8'),('z_s','f8'),('d_l','f8'),('d_s','f8'),('d_ls','f8'),
                                     ('sigma_c','f8'),('beta','f8'),('fpars','f8',32),('flags','b',32)])
 c_lensmodel_p = ctypeslib.ndpointer(dtype=generic_mass_model_ctype, flags='C_CONTIGUOUS')
 
 libdeflect = ctypeslib.load_library('deflect', modulepath)
 libdeflect.deflect_points.restype = None
-libdeflect.deflect_points.argtypes = [c_lensmodel_p, c_int, arg_c_double_p, c_int,arg_c_double_p,c_int,arg_c_double_p]
+libdeflect.deflect_points.argtypes = [global_lens_model_ctype, arg_c_double_p, c_int,arg_c_double_p,c_int,arg_c_double_p]
 
 
 ############################################################
@@ -105,19 +109,31 @@ libnufft.convolution_matrix_csr.restype = None
 libnufft.convolution_matrix_csr.argtypes = [image_space_ctype, c_int, c_int, 
         arg_c_double_p, arg_c_int_p, arg_c_int_p, arg_c_double_p]
 
+libnufft.grad_matrix_findiff_csr.restype = None
+libnufft.grad_matrix_findiff_csr.argtypes = [image_space_ctype,
+        arg_c_int_p, arg_c_int_p, arg_c_double_p]
+
+
+libnufft.curv_matrix_findiff_csr.restype = None
+libnufft.curv_matrix_findiff_csr.argtypes = [image_space_ctype,
+        arg_c_int_p, arg_c_int_p, arg_c_double_p]
+
+
+
+
 
 ############################################################
 # raster.c: computing exact pixel-triangle intersections
 ############################################################
 
 libraster = ctypeslib.load_library('raster', modulepath)
-libraster.rasterize_triangle.restype = None
-libraster.rasterize_triangle.argtypes = [arg_c_double_p, arg_c_double_p, c_int, c_int, c_double, c_double, c_double, c_double, arg_c_double_p]
+#libraster.rasterize_triangle.restype = None
+#libraster.rasterize_triangle.argtypes = [arg_c_double_p, arg_c_double_p, c_int, c_int, c_double, c_double, c_double, c_double, arg_c_double_p]
 
 
-#libraster.manifold_lens_matrix_csr.restype = None
-#libraster.manifold_lens_matrix_csr.argtypes = [image_space_ctype, image_space_ctype, c_int, 
-        #arg_c_int_p, arg_c_int_p, arg_c_double_p]
+libraster.manifold_lens_matrix_csr.restype = None
+libraster.manifold_lens_matrix_csr.argtypes = [image_space_ctype, image_space_ctype, 
+        global_lens_model_ctype, arg_c_int_p, arg_c_int_p, arg_c_double_p]
 
 
 

@@ -20,5 +20,6 @@ def max_relative_error(a, b, relative_to='max'):
     return maxerr
 
 # Arguments for imshow spot-checks
-imargs = {'origin': 'lower', 'interpolation': 'nearest', 'cmap': plt.cm.magma}
+imargs = {'origin': 'lower', 'interpolation': 'nearest', 'cmap': plt.cm.jet}
+tripargs = {'shading': 'gouraud', 'cmap': plt.cm.jet}
 

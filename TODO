@@ -2,6 +2,8 @@
 
 - Test BCB convolution for odd-size grid
 
+- Just use array slicing for the zpad operator
+
 - Make space data shape vs. pixel shape cleaner! (or just keep track better)
 
 - Move misc operators and CSR matrices to their own files
@@ -35,3 +37,4 @@
 - Duck typing everywhere... quit typechecking function args!
 
 - Clean up dependencies in setup.py
+- Merge all c code into one backend module?

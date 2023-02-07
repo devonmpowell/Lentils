@@ -21,25 +21,19 @@ class LensOperator(Operator):
 
 class ManifoldLensOperator(LensOperator):
 
-    def __init__(self, image_space, source_space, lensmodel, z_src, ncasted=1, **superargs):
+    def __init__(self, image_space, source_space, lensmodel, z_src, **superargs):
 
-        if not isinstance(image_space, ImageSpace):
-            raise TypeError("image_space must be ImageSpace")
-        if not isinstance(source_space, ImageSpace):
-            raise TypeError("source_space must be ImageSpace")
-        if not isinstance(lensmodel, LensModel):
-            raise TypeError("lensmodel must be LensModel")
+        # compute z-planes, etc
+        lensmodel.setup_raytracing(z_src)
 
         # make the matrix
+        num_rows = image_space.size
         num_vals = 50*num_rows # a conservative guess 
         row_inds = np.zeros(num_rows+1, dtype=np.int32) 
         cols = np.zeros(num_vals, dtype=np.int32) 
         vals = np.zeros(num_vals, dtype=np.float64) 
-        libtriangles.manifold_lens_matrix_csr(
-            image_space.shape[0], image_space.shape[1], ncasted, 
-            image_mask, self._uncasted_points, uncasted_tri_inds, 
-            source_space.points, source_space._tris.simplices,
-            row_inds, cols, vals)
+        libraster.manifold_lens_matrix_csr(image_space, source_space,
+                lensmodel, row_inds, cols, vals)
         self._mat = sparse.csr_matrix((vals,cols,row_inds), shape=(image_space.size,source_space.size))
 
         # finish up and pass along supers
@@ -113,11 +107,6 @@ class DelaunayLensOperator(LensOperator):
         row_inds = np.zeros(num_rows+1, dtype=np.int32) 
         cols = np.zeros(num_vals, dtype=np.int32) 
         vals = np.zeros(num_vals, dtype=np.float64) 
-        #libtriangles.delaunay_lens_matrix_csr(
-            #image_space.nx, image_space.ny, ncasted, 
-            #image_mask, self.uncasted_points, uncasted_tri_inds, 
-            #source_space.points, source_space.triangles,
-            #row_inds, cols, vals)
         libtriangles.delaunay_lens_matrix_csr(image_space, source_space,
                 ncasted, self.uncasted_points, uncasted_tri_inds, row_inds, cols, vals)
         self._mat = sparse.csr_matrix((vals,cols,row_inds), shape=(image_space.size,source_space.size))

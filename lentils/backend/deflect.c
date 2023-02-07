@@ -21,7 +21,7 @@ defl_func deflection_functions[16] = {
 	NULL, NULL, NULL, NULL}; 
 
 
-void deflect(generic_mass_model *lenses, int nlens, double *x_in, double *x_out, int want_deriv, double *deriv) { 
+void deflect(global_lens_model glm, double *x_in, double *x_out, int want_deriv, double *deriv) { 
 
 	int i;
 	double alpha[2];
@@ -30,7 +30,7 @@ void deflect(generic_mass_model *lenses, int nlens, double *x_in, double *x_out,
 	x_out[0] = x_in[0];
 	x_out[1] = x_in[1];
 
-	for(i = 0; i < nlens; ++i) {
+	for(i = 0; i < glm.num_lenses; ++i) {
 
 		memset(alpha, 0, sizeof(alpha));
 		//if(want_deriv)
@@ -38,7 +38,7 @@ void deflect(generic_mass_model *lenses, int nlens, double *x_in, double *x_out,
 
 		// TODO: pass x_in or x_out for these?? How do multiple lens planes at the same z_l accumulate??
 		//deflection_functions[lenses[i].type](&lenses[i], x_out, alpha, want_deriv, deriv);
-		deflection_functions[lenses[i].type](&lenses[i], x_in, alpha, want_deriv, deriv);
+		deflection_functions[glm.lenses[i].type](&glm.lenses[i], x_in, alpha, want_deriv, deriv);
 
 		// Lens equation 
 		x_out[0] -= alpha[0]; 
@@ -55,11 +55,11 @@ void deflect(generic_mass_model *lenses, int nlens, double *x_in, double *x_out,
 }
 
 
-void deflect_points(generic_mass_model *lenses, int nlens, double *p_in, int npoints, double *p_out, int want_deriv, double *deriv) 
+void deflect_points(global_lens_model glm, double *p_in, int npoints, double *p_out, int want_deriv, double *deriv) 
 {
 	int p;
 	for(p = 0; p < npoints; ++p) {
-		deflect(lenses, nlens, &p_in[2*p], &p_out[2*p], want_deriv, deriv);
+		deflect(glm, &p_in[2*p], &p_out[2*p], want_deriv, deriv);
 	}
 }
 

@@ -7,7 +7,8 @@
 
 typedef struct {
 
-	unsigned long type;
+	unsigned int type;
+	unsigned int _pad;
 	double z_l, z_s, d_l, d_s, d_ls, sigma_c, beta;
 	double fpars[32];
 	unsigned char flags[32];
@@ -15,9 +16,19 @@ typedef struct {
 } generic_mass_model;
 
 
+typedef struct {
+
+	int num_lenses;
+	int num_zplanes;
+	generic_mass_model *lenses;
+
+} global_lens_model;
 
 
+void deflect(global_lens_model glm, double *x_in, double *x_out, int want_deriv, double *deriv);
 
+
+void deflect_points(global_lens_model glm, double *p_in, int npoints, double *p_out, int want_deriv, double *deriv);
 
 
 

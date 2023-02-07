@@ -122,6 +122,74 @@ void dft_matrix_csr(visibility_space visspace, image_space imspace, int *row_ind
 	row_inds[row] = i;
 }
 
+void grad_matrix_findiff_csr(image_space imspace, int *row_inds, int *cols, double *vals) {
+
+	int row, col, i, iim, jim;
+	double val;
+
+	row = 0;
+	i = 0;
+
+	// x-component of gradient
+	for(iim = 0; iim < imspace.nx; ++iim)
+	for(jim = 0; jim < imspace.ny; ++jim, ++row) {
+		row_inds[row] = i;
+		if(iim < imspace.nx-1) {
+			vals[i] = -1.0/imspace.dx; 
+			cols[i++] = imspace.ny*(iim+0) + jim; 
+			vals[i] = 1.0/imspace.dx; 
+			cols[i++] = imspace.ny*(iim+1) + jim; 
+		}
+	}
+	// y-component of gradient
+	for(iim = 0; iim < imspace.nx; ++iim)
+	for(jim = 0; jim < imspace.ny; ++jim, ++row) {
+		row_inds[row] = i;
+		if(jim < imspace.ny-1) {
+			vals[i] = -1.0/imspace.dy; 
+			cols[i++] = imspace.ny*iim + (jim+0); 
+			vals[i] = 1.0/imspace.dy; 
+			cols[i++] = imspace.ny*iim + (jim+1); 
+		}
+	}
+	row_inds[row] = i;
+}
+
+
+void curv_matrix_findiff_csr(image_space imspace, int *row_inds, int *cols, double *vals) {
+
+	int row, col, i, iim, jim;
+	double val, invh2;
+
+	// 5-point Laplacian stencil
+	row = 0;
+	i = 0;
+	invh2 = 1.0/(imspace.dx*imspace.dy);
+	for(iim = 0; iim < imspace.nx; ++iim)
+	for(jim = 0; jim < imspace.ny; ++jim, ++row) {
+		row_inds[row] = i;
+		if(iim > 0) {
+			vals[i] = invh2; 
+			cols[i++] = imspace.ny*(iim-1) + jim; 
+		}
+		if(jim > 0) {
+			vals[i] = invh2; 
+			cols[i++] = imspace.ny*iim + (jim-1); 
+		}
+		vals[i] = -4.0*invh2; 
+		cols[i++] = imspace.ny*iim + jim; 
+		if(jim < imspace.ny-1) {
+			vals[i] = invh2; 
+			cols[i++] = imspace.ny*iim + (jim+1); 
+		}
+		if(iim < imspace.nx-1) {
+			vals[i] = invh2; 
+			cols[i++] = imspace.ny*(iim+1) + jim; 
+		}
+	}
+	row_inds[row] = i;
+}
+
 
 
 void convolution_matrix_csr(image_space imspace, int k_nx, int k_ny, double *kernel, 

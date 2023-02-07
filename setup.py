@@ -24,7 +24,8 @@ if __name__ == "__main__":
 
     deflect = Extension('backend.deflect', sources = ['lentils/backend/deflect.c'], include_dirs = ['lentils/backend'])
     triangles = Extension('backend.triangles', sources = ['lentils/backend/triangles.c'], include_dirs = ['lentils/backend'])
-    raster = Extension('backend.raster', sources = ['lentils/backend/raster.c'], include_dirs = ['lentils/backend'])
+    raster = Extension('backend.raster', sources = ['lentils/backend/raster.c','lentils/backend/deflect.c'], 
+            include_dirs = ['lentils/backend'],extra_compile_args=['-Wall'])
     nufft = Extension('backend.nufft', sources = ['lentils/backend/nufft.c'],
             libraries=['gsl', 'gslcblas', 'm', 'gomp', 'fftw3', 'fftw3_omp','fftw3_threads'],
             runtime_library_dirs=['/usr/lib/x86_64-linux-gnu'],

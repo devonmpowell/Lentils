@@ -30,13 +30,14 @@ class SolverTests(TestCase):
         lensmodel.add_component(PowerLawEllipsoid(b=0.463544, th=-14.278754, f=0.799362, x=-0.046847, 
             y=-0.105357, rc=0.000571, qh=0.506730, z=0.881000))
         lensmodel.add_component(ExternalPotential(x=-0.046847, y=-0.105357, ss=-0.046500, sa=7.921300, z=0.881000))
-        lensop = DelaunayLensOperator(image_space, lensmodel, z_src=2.059, ncasted=3, mask=imdata.mask)
+        lensop = DelaunayLensOperator(image_space, lensmodel, z_src=2.059, ncasted=3)
         src_space = lensop.space_right
         points = src_space.points
 
         # source prior
         lams = 109.832868 
-        reg_op = PriorCovarianceOperator(src_space, type='gradient', strength=lams)
+        lambry = 10.0
+        reg_op = PriorCovarianceOperator(src_space, type='gradient', strength=lams, lambda_boundary=lambry)
 
         # Set up operators
         response = psfop * lensop
@@ -91,7 +92,8 @@ class SolverTests(TestCase):
 
         # Set up operators
         lams = 2.36e11
-        reg_op = PriorCovarianceOperator(src_space, type='gradient', strength=lams)
+        lambry = 1.0e3
+        reg_op = PriorCovarianceOperator(src_space, type='gradient', strength=lams, lambda_boundary=lambry)
         lhs = lensop.T * uvdata.blurred_covariance_operator * lensop + reg_op
         rhs = lensop.T * uvdata.dirty_image
 
