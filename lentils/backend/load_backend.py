@@ -53,7 +53,7 @@ class global_lens_model_ctype(Structure):
     _fields_ = [('num_lenses', c_int),('num_zplanes', c_int), ('_c_lenses', c_void_p)]
 
 generic_mass_model_ctype = np.dtype([('type','u4'),('_pad','u4'),('z_l','f8'),('z_s','f8'),('d_l','f8'),('d_s','f8'),('d_ls','f8'),
-                                    ('sigma_c','f8'),('beta','f8'),('fpars','f8',32),('flags','b',32)])
+                                    ('sigma_c','f8'),('beta','f8'),('fpars','f8',24),('ipars','i4',8),('flags','b',32)])
 c_lensmodel_p = ctypeslib.ndpointer(dtype=generic_mass_model_ctype, flags='C_CONTIGUOUS')
 
 libdeflect = ctypeslib.load_library('deflect', modulepath)

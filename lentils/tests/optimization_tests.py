@@ -7,12 +7,9 @@ from lentils.common import VisibilitySpace, ImageSpace, OpticalDataset, RadioDat
 from lentils.operators import NUFFTOperator, DFTOperator, DelaunayLensOperator, PriorCovarianceOperator, DiagonalOperator
 from lentils.models import GlobalLensModel, PowerLawEllipsoid, ExternalPotential
 
-from .test_utils import plt, imargs, tripargs
+from .test_utils import plt, imargs, tripargs, cg_callback
 #from sksparse.cholmod import cholesky
 import scipy.sparse.linalg as linalg 
-
-def cg_callback(x):
-    print('.', end='', flush=True)
 
 
 
@@ -40,8 +37,8 @@ class OptimizationTests(TestCase):
         points = src_space.points
 
         # source prior
-        lams = 10.0
-        reg_op = PriorCovarianceOperator(src_space, type='gradient', strength=lams)
+        lams_target = 10.0
+        #reg_op = PriorCovarianceOperator(src_space, type='gradient', strength=lams)
         #reg_op = PriorCovarianceOperator(src_space, type='tikhonov', strength=lams)
 
         # set up 
@@ -50,7 +47,13 @@ class OptimizationTests(TestCase):
         jz = DiagonalOperator(src_space, slast) # ds/dz = exp(z) = s
         ddata = psfop*lensop*slast - imdata.data
 
-        for iter in range(10):
+        for iter in range(12):
+
+            lams = lams_target
+            if iter < 5:
+                lams *= 10**(5-iter)
+            print("lams =", lams)
+            reg_op = PriorCovarianceOperator(src_space, type='gradient', strength=lams)
 
             # Set up operators
             response = psfop * lensop * jz
@@ -106,53 +109,23 @@ class OptimizationTests(TestCase):
         points = src_space.points
 
 
-        ############## First do a linear solve to get it close ###########
-
-        # Set up operators
-        lams = 1.0e11 
-        reg_op = PriorCovarianceOperator(src_space, type='gradient', strength=lams)
-        #lams = 1.0e8
-        #reg_op_tikh = PriorCovarianceOperator(src_space, type='tikhonov', strength=lams)
-
-        lhs = lensop.T * uvdata.blurred_covariance_operator * lensop + reg_op
-        rhs = lensop.T * uvdata.dirty_image
-
-        # preconditioner and CG solve
-        # TODO: cheaper setup for weight sum
-        lu = linalg.splu(reg_op._mat + wtsum * lensop._mat.T @ lensop._mat)
-        lhs_op = linalg.LinearOperator((src_space.size,src_space.size), matvec=lhs.apply)
-        pc = linalg.LinearOperator((src_space.size, src_space.size), lu.solve)
-        sol_cg, info = linalg.cg(lhs_op, rhs.flatten(), tol=1.0e-10, atol=1.0e-14, M=pc, callback=cg_callback)
-
-        print("Sone with linear solve")
- 
-        im = plt.tripcolor(points[:,0],points[:,1], src_space.triangles, sol_cg, **tripargs)
-        plt.colorbar(im)
-        plt.title('Solution')
-        plt.show()
-
-        slo = 1.0e-2*np.max(sol_cg)
-
-        sol_cg[sol_cg < slo] = slo
-        zlast = np.log(sol_cg).reshape(src_space.shape)
-
-
-        ##################################################################
-
         # source prior
-        lams = 1000.0 
-        reg_op = PriorCovarianceOperator(src_space, type='gradient', strength=lams)
-        #reg_op = PriorCovarianceOperator(src_space, type='tikhonov', strength=lams)
-
+        lams_target = 1000.0 
 
         # set up 
-        #zlast = src_space.new_vector(-10.0)
+        zlast = src_space.new_vector(-10.0)
         slast = np.exp(zlast)
         jz = DiagonalOperator(src_space, slast) # ds/dz = exp(z) = s
         ls = lensop*slast
         ddata = bcb * ls - dirty_im
 
         for iter in range(10):
+
+            lams = lams_target
+            if iter < 5:
+                lams *= 2**(5-iter)
+            print("lams =", lams)
+            reg_op = PriorCovarianceOperator(src_space, type='gradient', strength=lams)
 
             # Set up operators
             lhs = jz.T * lensop.T * bcb * lensop * jz + reg_op
@@ -174,19 +147,19 @@ class OptimizationTests(TestCase):
             #ddata = psfop*ls - imdata.data
             ddata = bcb * ls - dirty_im
     
-        im = plt.tripcolor(points[:,0],points[:,1], src_space.triangles, slast[0,0], **tripargs)
-        plt.colorbar(im)
-        plt.title('Solution')
-        plt.show()
-
-
-        plt.imshow(ls[0,0].T, extent=image_space.bounds, **imargs)
-        plt.title('Ls')
-        plt.show()
-
-        plt.imshow(ddata[0,0].T, extent=image_space.bounds, **imargs)
-        plt.title('Residuals')
-        plt.show()
+            im = plt.tripcolor(points[:,0],points[:,1], src_space.triangles, slast[0,0], **tripargs)
+            plt.colorbar(im)
+            plt.title('Solution')
+            plt.show()
+    
+    
+            plt.imshow(ls[0,0].T, extent=image_space.bounds, **imargs)
+            plt.title('Ls')
+            plt.show()
+    
+            plt.imshow(ddata[0,0].T, extent=image_space.bounds, **imargs)
+            plt.title('Residuals')
+            plt.show()
 
 
 

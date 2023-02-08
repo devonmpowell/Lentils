@@ -10,14 +10,16 @@
 typedef void (*defl_func)(generic_mass_model *gmm, double *x_in, double *dx, int want_deriv, double *deriv);
 void deflect_PEMD_series(generic_mass_model *gmm, double *x_in, double *dx, int want_deriv, double *deriv);
 void deflect_external_potential(generic_mass_model *gmm, double *x_in, double *dx, int want_deriv, double *deriv);
+void deflect_internal_multipoles(generic_mass_model *gmm, double *x_in, double *dx, int want_deriv, double *deriv);
 
 // deflection functions for each lens type go in an array 
 // allows calling functions simply by indexing the lens model type
 defl_func deflection_functions[16] = {
 	&deflect_PEMD_series, // type 0
 	&deflect_external_potential, // type 1
+	&deflect_internal_multipoles, // type 2
 	NULL, NULL, NULL, NULL, NULL, 
-	NULL, NULL, NULL, NULL, NULL, 
+	NULL, NULL, NULL, NULL,
 	NULL, NULL, NULL, NULL}; 
 
 
@@ -65,26 +67,48 @@ void deflect_points(global_lens_model glm, double *p_in, int npoints, double *p_
 
 
 /*----- Define the function for the deflection angle of the external shear----------------*/
-void deflect_external_potential(generic_mass_model *gmm, double *x_in, double *dx, int want_deriv, double *deriv)
+void deflect_external_potential(generic_mass_model *gmm, double *x_in, double *ds, int want_deriv, double *deriv)
 {
 
 	// get pars in a nice format for this lens type
 	typedef struct {
 		double z_l, z_s, d_l, d_s, d_ls, sigma_c, beta;
-		double x, y, ss, sa, sin_sa, cos_sa; 
+		double x, y, ss, sa, sin_sa, cos_sa, gks, gka, sin_gka, cos_gka, gss, gsa, sin_gsa, cos_gsa; 
 	} ep_mass_model;
 	ep_mass_model lens = *((ep_mass_model*) &gmm->z_l);
-	double cs2,sn2,sx,sy;
+	double cs2, sn2, sx, sy, dx, dy, sx_r, sy_r;
 
-	// deflection angles, only external shear for now
+	// lens center
 	sx = x_in[0] - lens.x;
 	sy = x_in[1] - lens.y;
+
+	// External shear
 	cs2 = -lens.cos_sa*lens.cos_sa + lens.sin_sa*lens.sin_sa; // cos(2*sa);
 	sn2 = -2*lens.sin_sa*lens.cos_sa;  // sin(2*sa);
-	dx[0] += lens.ss*(cs2*sx+sn2*sy);
-	dx[1] += lens.ss*(sn2*sx-cs2*sy);
+	ds[0] += lens.ss*(cs2*sx+sn2*sy);
+	ds[1] += lens.ss*(sn2*sx-cs2*sy);
+
+	// Surface density gradient
+	// From Keeton 2001
+	sx_r = sx*lens.cos_gka + sy*lens.sin_gka;
+	sy_r = -sx*lens.sin_gka + sy*lens.cos_gka;
+	dx = -0.25 * lens.gks * (3*sx_r*sx_r + sy_r*sy_r); 
+	dy = -0.5 * lens.gks * sx_r*sy_r;
+	ds[0] += dx*lens.cos_gka - dy*lens.sin_gka;
+	ds[1] += dx*lens.sin_gka + dy*lens.cos_gka;
+
+	// Shear gradient
+	// From Keeton 2001
+	sx_r = sx*lens.cos_gsa + sy*lens.sin_gsa;
+	sy_r = -sx*lens.sin_gsa + sy*lens.cos_gsa;
+	dx = -0.5 * lens.gss * (sx_r*sx_r - sy_r*sy_r); 
+	dy = 1.0 * lens.gss * sx_r*sy_r;
+	ds[0] += dx*lens.cos_gsa - dy*lens.sin_gsa;
+	ds[1] += dx*lens.sin_gsa + dy*lens.cos_gsa;
+
 
 	// derivatives
+#if 0
 	if(want_deriv) {
 		deriv[6] += -lens.ss*cs2; // dalpha_dxl, dalpha_dyl
 		deriv[7] += -lens.ss*sn2;
@@ -95,8 +119,60 @@ void deflect_external_potential(generic_mass_model *gmm, double *x_in, double *d
 		deriv[14] += M_PI/180.0*lens.ss*(2*sy*cs2 - 2*sx*sn2); // dalpha_dsa
 		deriv[15] += M_PI/180.0*lens.ss*(2*sx*cs2 + 2*sy*sn2);
 	}
+#endif
 }
 
+
+void deflect_internal_multipoles(generic_mass_model *gmm, double *x_in, double *ds, int want_deriv, double *deriv)
+{
+
+	// get pars in a nice format for this lens type
+	typedef struct {
+		double z_l, z_s, d_l, d_s, d_ls, sigma_c, beta;
+		double x, y, qh; 
+		double coefficients[21];
+		int order;
+	} im_mass_model;
+	im_mass_model lens = *((im_mass_model*) &gmm->z_l);
+
+	int m;
+	double sx, sy;
+	double alpha, b, norm;
+	double dr, dtheta;
+	double r, theta;
+	double cn, sn;
+	double am, bm;
+	double cmth, smth;
+
+	// do this in polar coords, then convert back to Cartesian at the end
+	sx = x_in[0] - lens.x;
+	sy = x_in[1] - lens.y;
+	r = sqrt(sx*sx+sy*sy);
+	theta = atan2(sy,sx);
+	cn = sx/r;
+	sn = sy/r;
+
+	// loop over orders, 3 is the lowest allowed
+	for(m = 3; m <= lens.order; ++m) {
+
+		am = lens.coefficients[2*(m-3)+0];
+		bm = lens.coefficients[2*(m-3)+1];
+		alpha = 2.0*lens.qh;
+		// TODO: scale radius relative to main lens?
+		b = 1.0; // scale radius in arcsec
+		norm = 2.0*pow(b, alpha)/(m*m-(alpha-2)*(alpha-2));
+		cmth = cos(m*theta);
+		smth = sin(m*theta);
+	
+		// deflection angle in polar coords
+		dr = -norm*(2.0-alpha)*pow(r,1.0-alpha)*(bm*smth+am*cmth);
+		dtheta = norm*m*pow(r,1.0-alpha)*(-bm*cmth+am*smth);
+	
+		// put deflection back into Cartesian
+		ds[0] += cn*dr - sn*dtheta;
+		ds[1] += sn*dr + cn*dtheta;
+	}
+}
 
 
 

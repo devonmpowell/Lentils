@@ -88,28 +88,13 @@ class MassModel:
     def analytic_convergence(self, points):
         raise NotImplementedError
 
-    #def __getattr__(self, name):
-        #if name in self._exposed_cpars:
-            #return self._cpars[0][name]
-        #else:
-            #return super().__getattr__(name)
-
-    #def __setattr__(self, name, val):
-        #if name in self._exposed_cpars:
-            #self._cpars[name] = val
-            #if name in self._special_setters:
-                #self._special_setters[name](val)
-        #else:
-            #super().__setattr__(name, val)
-
-
 
 class PowerLawEllipsoid(MassModel):
 
     _my_ctype = 0
 
-    def __init__(self, b=0.463544, th=-14.278754, f=0.799362, x=-0.046847, 
-            y=-0.105357, rc=0.000571, qh=0.506730, z=0.881000):
+    def __init__(self, z=0.881000, b=0.463544, th=-14.278754, f=0.799362, x=-0.046847, 
+            y=-0.105357, rc=0.000571, qh=0.506730):
 
         # set initial values
         self.z, self.x, self.y, self.f, self.th, self.b, self.qh, self.rc = z, x, y, f, th, b, qh, rc
@@ -135,9 +120,11 @@ class ExternalPotential(MassModel):
 
     _my_ctype = 1
 
-    def __init__(self,  x=-0.046847, y=-0.105357, ss=-0.046500, sa=7.921300, z=0.881000):
+    def __init__(self, z=0.881000,  x=-0.046847, y=-0.105357, ss=-0.046500, sa=7.921300,
+            gks=0.0, gka=0.0, gss=0.0, gsa=0.0):
 
         self.z, self.x, self.y, self.ss, self.sa = z, x, y, ss, sa
+        self.gks, self.gka, self.gss, self.gsa = gks, gka, gss, gsa
 
     def get_cpars(self):
         '''Return a structured numpy array containing the C-formatted fields'''
@@ -150,6 +137,39 @@ class ExternalPotential(MassModel):
         cpars['fpars'][3] = self.sa
         cpars['fpars'][4] = np.sin((self.sa+90)*np.pi/180)
         cpars['fpars'][5] = np.cos((self.sa+90)*np.pi/180)
+        cpars['fpars'][6] = self.gks
+        cpars['fpars'][7] = self.gka
+        cpars['fpars'][8] = np.sin((self.gka+90)*np.pi/180)
+        cpars['fpars'][9] = np.cos((self.gka+90)*np.pi/180)
+        cpars['fpars'][10] = self.gss
+        cpars['fpars'][11] = self.gsa
+        cpars['fpars'][12] = np.sin((self.gsa+90)*np.pi/180)
+        cpars['fpars'][13] = np.cos((self.gsa+90)*np.pi/180)
         return cpars
+
+
+class InternalMultipoles(MassModel):
+
+    _my_ctype = 2
+
+    def __init__(self, z=0.881000,  x=-0.046847, y=-0.105357, qh=0.5,
+            order=4, coefficients=[[0.0,0.0],[0.0,0.0]]):
+
+        self.z, self.x, self.y, self.qh, self.order = z, x, y, qh, int(order)
+        self.coefficients = np.array(coefficients, dtype=np.float64).reshape((order-2,2))
+
+    def get_cpars(self):
+        '''Return a structured numpy array containing the C-formatted fields'''
+        cpars = np.zeros(1, dtype=generic_mass_model_ctype)[0]
+        cpars['type'] = self._my_ctype
+        cpars['z_l'] = self.z
+        cpars['fpars'][0] = self.x
+        cpars['fpars'][1] = self.y
+        cpars['fpars'][2] = self.qh
+        for i, c in enumerate(self.coefficients.flatten()):
+            cpars['fpars'][3+i] = c
+        cpars['ipars'][0] = self.order
+        return cpars
+
 
 

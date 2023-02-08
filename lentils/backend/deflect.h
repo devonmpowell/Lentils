@@ -10,7 +10,8 @@ typedef struct {
 	unsigned int type;
 	unsigned int _pad;
 	double z_l, z_s, d_l, d_s, d_ls, sigma_c, beta;
-	double fpars[32];
+	double fpars[24];
+	int ipars[8];
 	unsigned char flags[32];
 
 } generic_mass_model;
