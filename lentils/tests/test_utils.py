@@ -23,3 +23,7 @@ def max_relative_error(a, b, relative_to='max'):
 imargs = {'origin': 'lower', 'interpolation': 'nearest', 'cmap': plt.cm.jet}
 tripargs = {'shading': 'gouraud', 'cmap': plt.cm.jet}
 
+# callback for CG solver iterations
+def cg_callback(x):
+    print('.', end='', flush=True)
+

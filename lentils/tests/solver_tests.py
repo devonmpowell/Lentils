@@ -7,7 +7,7 @@ from lentils.common import VisibilitySpace, ImageSpace, OpticalDataset, RadioDat
 from lentils.operators import NUFFTOperator, DFTOperator, DelaunayLensOperator, PriorCovarianceOperator
 from lentils.models import GlobalLensModel, PowerLawEllipsoid, ExternalPotential
 
-from .test_utils import plt, imargs
+from .test_utils import plt, imargs, cg_callback
 #from sksparse.cholmod import cholesky
 import scipy.sparse.linalg as linalg 
 
@@ -49,7 +49,7 @@ class SolverTests(TestCase):
         #print("Logdet (PC) =", cholpc.logdet())
         lhs_op = linalg.LinearOperator((src_space.size,src_space.size), matvec=lhs.apply)
         pc = linalg.LinearOperator((src_space.size, src_space.size), lu.solve)
-        sol_cg, info = linalg.cg(lhs_op, rhs.flatten(), tol=1.0e-10, atol=1.0e-14, M=pc)
+        sol_cg, info = linalg.cg(lhs_op, rhs.flatten(), tol=1.0e-10, atol=1.0e-14, M=pc, callback=cg_callback)
         err_max = max_relative_error(lhs*sol_cg, rhs)
         self.assertLess(err_max, errtol) 
 
@@ -109,7 +109,7 @@ class SolverTests(TestCase):
         #print("Logdet (PC) =", logdet(lu))
         lhs_op = linalg.LinearOperator((src_space.size,src_space.size), matvec=lhs.apply)
         pc = linalg.LinearOperator((src_space.size, src_space.size), lu.solve)
-        sol_cg, info = linalg.cg(lhs_op, rhs.flatten(), tol=1.0e-10, atol=1.0e-14, M=pc)
+        sol_cg, info = linalg.cg(lhs_op, rhs.flatten(), tol=1.0e-10, atol=1.0e-14, M=pc, callback=cg_callback)
         err_max = max_relative_error(lhs*sol_cg, rhs)
         self.assertLess(err_max, errtol) 
 
@@ -136,6 +136,60 @@ class SolverTests(TestCase):
         #print("Solution max =", np.max(sol_cg))
         #plt.title('Solution')
         #plt.show()
+
+
+    def test_radio_from_dirty(self):
+
+        # load mock data
+        image_space = ImageSpace(shape=(1024,1024), bounds=[(-1.15, 0.35,), (-0.65, 0.85)], 
+                mask=f'{testpath}/data_radio_2d/input/mask_1024_zoom.fits')
+
+        # lens model
+        lensmodel = GlobalLensModel()
+        lensmodel.add_component(PowerLawEllipsoid(b=0.402005, th=48.987322, f=0.796415, x=-0.445178, y=0.178450, 
+                rc=1.0e-4, qh=0.504365, z=0.35))
+        lensmodel.add_component(ExternalPotential(x=-0.445178, y=0.178450, ss=0.070171, sa=75.522635, z=0.35))
+        lensop = DelaunayLensOperator(image_space, lensmodel, z_src=3.2, ncasted=6)
+        src_space = lensop.space_right
+        points = src_space.points
+
+        # Set up operators
+        lams = 2.36e11
+        lambry = 1.0e3
+        reg_op = PriorCovarianceOperator(src_space, type='gradient', strength=lams, lambda_boundary=lambry)
+
+        # solve system from dirty image and beam
+        dirtydata = RadioDataset(dirty_image_fits=f'{testpath}/data_radio_2d/reference/dirty_image_reference_fft.fits', 
+                dirty_beam_fits=f'{testpath}/data_radio_2d/reference/dirty_beam_reference_fft.fits', 
+                image_space=image_space)
+        lhs = lensop.T * dirtydata.blurred_covariance_operator * lensop + reg_op
+        rhs = lensop.T * dirtydata.dirty_image
+
+        # preconditioner and CG solve
+        bmax = np.max(dirtydata.dirty_beam)
+        lu = linalg.splu(reg_op._mat + bmax * lensop._mat.T @ lensop._mat)
+        lhs_op = linalg.LinearOperator((src_space.size,src_space.size), matvec=lhs.apply)
+        pc = linalg.LinearOperator((src_space.size, src_space.size), lu.solve)
+        sol_dirty, info = linalg.cg(lhs_op, rhs.flatten(), tol=1.0e-10, atol=1.0e-14, M=pc, callback=cg_callback)
+        err_max = max_relative_error(lhs*sol_dirty, rhs)
+        self.assertLess(err_max, errtol) 
+
+        # set up system from the data
+        uvdata = RadioDataset(f'{testpath}/data_radio_2d/input/j0751_small_snr1x.uvfits', image_space=image_space)
+        lhs = lensop.T * uvdata.blurred_covariance_operator * lensop + reg_op
+        rhs = lensop.T * uvdata.dirty_image
+
+        # check against DFT computation
+        # TODO: concatenating explicit mats automatically
+        dft = DFTOperator(uvdata.space, image_space)
+        rhs = lensop.T * dft.T * uvdata.covariance_operator_dft * uvdata.data 
+        response = dft._mat * lensop._mat
+        lhs = response.T * uvdata.covariance_operator_dft._mat * response + reg_op._mat
+        sol_visdata = linalg.splu(lhs).solve(rhs.flatten())
+        err_max = max_relative_error(sol_dirty, sol_visdata)
+        self.assertLess(err_max, errtol) 
+
+
 
 
 

@@ -40,7 +40,7 @@ class Space:
 
 class VisibilitySpace(Space, visibility_space_ctype):
 
-    def __init__(self, channels=[0.], uvcoords=np.array([0.]), stokes=['I']):
+    def __init__(self, channels=[0.], uvcoords=np.array([0.,0.,0.]), stokes=['I']):
 
         self.channels = np.array(channels, dtype=np.float64, order='C').flatten() 
         self._c_channels = self.channels.ctypes.data_as(c_double_p)
@@ -89,8 +89,6 @@ class FourierSpace(Space, fourier_space_ctype):
 
 
 class ImageSpace(Space, image_space_ctype):
-
-    # TODO: deal with the transpose convention here
 
     # TODO: multiple channels
 

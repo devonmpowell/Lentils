@@ -118,7 +118,7 @@ class NUFFTTests(TestCase):
         self.assertAlmostEqual(1.0, np.max(uvdata.dirty_beam)/wtsum, delta=errtol) 
 
         # check against DFT computation
-        dft = DFTOperator(uvdata.space, uvdata._space_beam)
+        dft = DFTOperator(uvdata.space, uvdata.beam_space)
         dft_dirty_beam = dft.T * cvec
         err_max = max_relative_error(uvdata.dirty_beam, dft_dirty_beam)
         self.assertLess(err_max, errtol) 
